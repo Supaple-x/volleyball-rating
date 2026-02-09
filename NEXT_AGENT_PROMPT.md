@@ -3,105 +3,57 @@
 ## Контекст
 Проект volleyball-rating — парсер и аналитика volleymsk.ru для любительского волейбола в Москве.
 Развёрнут на https://volleymsk.duckdns.org (сервер 176.108.251.49).
+GitHub: https://github.com/Supaple-x/volleyball-rating
 
 Прочитай `CLAUDE.md` для полной документации проекта.
 
-## ЗАДАЧА: Исправить список судей — добавить количество матчей и средний рейтинг
+## Текущее состояние
 
-### Проблема
-На странице "Судьи" (вкладка Referees) в таблице есть колонки "Матчей" и "Рейтинг", но они показывают "-" вместо реальных данных.
+Всё работает и задеплоено:
+- Парсинг ~15000 матчей с volleymsk.ru
+- SPA фронтенд с тёмной темой (Dashboard, Матчи, Команды, Игроки, Судьи, Парсинг)
+- Детальные профили: матчи, игроки, команды, судьи
+- Поиск по всем сущностям
+- Интерактивный график динамики матчей с фильтром по годам
+- Топ игроков по MVP, судей по кол-ву матчей
 
-### Причина
-API эндпоинт `GET /api/referees` (файл `src/web/app.py`, строка ~221) возвращает только `{id, full_name}` для каждого судьи. Не считает количество матчей и средний рейтинг.
+## ЗАДАЧА: Парсинг из нового источника
 
-### Что нужно сделать
+Пользователь укажет новый источник данных для парсинга. Детали задачи будут предоставлены в начале сессии.
 
-#### 1. Бэкенд: обогатить `/api/referees` (src/web/app.py)
-Для каждого судьи добавить:
-- `match_count` — количество матчей, где `Match.referee_id == referee.id`
-- `avg_rating` — средняя оценка из `Match.referee_rating_home` и `Match.referee_rating_away` (оба поля nullable, брать только не-null значения)
+### Архитектура парсера (для справки)
 
-**Текущий код** (`src/web/app.py:221-240`):
-```python
-@app.route('/api/referees')
-def api_referees():
-    from src.database.models import Referee
-    from sqlalchemy import or_
-
-    search = request.args.get('search', '').strip()
-    with db.session() as session:
-        query = session.query(Referee)
-        if search:
-            query = query.filter(or_(
-                Referee.last_name.ilike(f'%{search}%'),
-                Referee.first_name.ilike(f'%{search}%'),
-                Referee.patronymic.ilike(f'%{search}%')
-            ))
-        referees = query.order_by(Referee.last_name).all()
-        result = [{'id': r.id, 'full_name': r.full_name} for r in referees]
-    return jsonify({'referees': result, 'total': len(result)})
+Текущая архитектура парсинга:
+```
+src/parser/
+├── base_parser.py      # BaseParser: fetch_page(), RATE_LIMIT, clean_text(), parse_name()
+├── match_parser.py     # MatchParser(BaseParser): parse_match(id) → dict
+├── roster_parser.py    # RosterParser(BaseParser): parse_roster(id) → dict
+└── tournament_parser.py # TournamentParser(BaseParser)
 ```
 
-**Подсказка по реализации**:
-Используй SQLAlchemy subquery или join с Match для подсчёта. Пример подхода:
-```python
-from sqlalchemy import func, case
-# Subquery для подсчёта матчей и рейтинга по каждому referee
-match_stats = session.query(
-    Match.referee_id,
-    func.count(Match.id).label('match_count'),
-    func.avg(
-        # Среднее из home и away рейтингов (оба nullable)
-    ).label('avg_rating')
-).group_by(Match.referee_id).subquery()
-```
+- `BaseParser` — общая логика: HTTP-запросы (requests + BeautifulSoup), RATE_LIMIT 50ms, кодировка windows-1251
+- Каждый парсер наследует BaseParser и реализует специфичную логику
+- `DataService` (`src/services/data_service.py`) — сохраняет данные в SQLite через SQLAlchemy
+- `ParsingService` (`src/services/parsing_service.py`) — фоновый парсинг с threading, прогрессбар
 
-Важно: Match.referee_rating_home и Match.referee_rating_away — это Integer, nullable. Один матч может давать 0, 1 или 2 оценки. Средний рейтинг нужно считать по всем не-null оценкам.
-
-#### 2. Фронтенд: отобразить данные (src/web/templates/index.html)
-
-**Текущий код** (строка ~368-372):
-```javascript
-async function loadReferees() {
-    const search = document.getElementById('referees-search')?.value || '';
-    const data = await api(search ? `/api/referees?search=${encodeURIComponent(search)}` : '/api/referees');
-    document.getElementById('referees-tbody').innerHTML = data.referees.map((r, i) => {
-        ...
-        return `<tr>...<td>-</td><td>-</td></tr>`;
-    }).join('');
-}
-```
-
-Заменить `-` на `r.match_count` и `r.avg_rating` (округлённый до 1 знака).
-
-#### 3. Dashboard: обновить таблицу топ-судей
-На дашборде тоже есть таблица судей (строка ~318-319) — добавить туда match_count и avg_rating, и отсортировать по кол-ву матчей или рейтингу.
-
-### Модели данных (справка)
-
-```python
-# src/database/models.py
-class Match:
-    referee_id: Optional[int]  # FK на referees.id
-    referee_rating_home: Optional[int]  # Оценка от хозяев (1-5)
-    referee_rating_away: Optional[int]  # Оценка от гостей (1-5)
-
-class Referee:
-    id, last_name, first_name, patronymic
-    matches: List[Match]  # relationship
-```
+### При добавлении нового источника:
+1. Изучи структуру нового сайта (кодировка, HTML-структура, API)
+2. Создай новый парсер в `src/parser/` наследуя от BaseParser (или создай новый базовый)
+3. Обнови модели в `src/database/models.py` если нужны новые поля
+4. Обнови `DataService` для сохранения новых данных
+5. Добавь API эндпоинты в `src/web/app.py`
+6. Обнови фронтенд в `src/web/templates/index.html`
+7. Протестируй локально (python run.py web → http://127.0.0.1:5000)
+8. Задеплой на сервер (scp + systemctl restart)
 
 ### Деплой
-После внесения изменений:
 ```bash
-# С Windows
-scp -i ~/.ssh/russia_vps_key src/web/app.py artemfcsm@176.108.251.49:/opt/volleyball-rating/src/web/app.py
-scp -i ~/.ssh/russia_vps_key src/web/templates/index.html artemfcsm@176.108.251.49:/opt/volleyball-rating/src/web/templates/index.html
+# С Windows на сервер
+scp -i ~/.ssh/russia_vps_key <файл> artemfcsm@176.108.251.49:/opt/volleyball-rating/<файл>
 ssh -i ~/.ssh/russia_vps_key artemfcsm@176.108.251.49 "sudo systemctl restart volleyball-rating"
 ```
 
-### Проверка
-1. Открой https://volleymsk.duckdns.org -> вкладка "Судьи"
-2. Убедись что колонки "Матчей" и "Рейтинг" показывают числа, а не "-"
-3. Поиск должен продолжать работать
-4. На дашборде топ-судьи тоже должны показывать статистику
+### Нерешённые проблемы (низкий приоритет)
+1. Исторические названия команд не отслеживаются (показывается текущее название)
+2. Нет страницы сравнения игроков/команд

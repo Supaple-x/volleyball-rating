@@ -59,6 +59,26 @@ def register_routes(app: Flask):
             stats = data_service.get_stats()
         return jsonify(stats)
 
+    @app.route('/api/stats/monthly')
+    def api_stats_monthly():
+        """Get match count by year-month for the chart."""
+        from src.database.models import Match
+        from sqlalchemy import func, extract
+
+        with db.session() as session:
+            rows = session.query(
+                extract('year', Match.date_time).label('year'),
+                extract('month', Match.date_time).label('month'),
+                func.count(Match.id).label('count')
+            ).filter(
+                Match.date_time.isnot(None)
+            ).group_by('year', 'month').order_by('year', 'month').all()
+
+            result = [{'year': int(r.year), 'month': int(r.month), 'count': r.count} for r in rows]
+            years = sorted(set(r.year for r in rows))
+
+        return jsonify({'data': result, 'years': [int(y) for y in years]})
+
     @app.route('/api/progress')
     def api_progress():
         """Get current parsing progress."""
@@ -128,14 +148,25 @@ def register_routes(app: Flask):
 
     @app.route('/api/matches')
     def api_matches():
-        """Get list of matches."""
+        """Get list of matches with optional search by team name."""
         from src.database.models import Match, Team
+        from sqlalchemy import or_
 
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 50, type=int)
+        search = request.args.get('search', '').strip()
 
         with db.session() as session:
-            query = session.query(Match).order_by(Match.date_time.desc())
+            query = session.query(Match)
+            if search:
+                # Join with teams to search by name
+                home_team = session.query(Team).filter(Team.name.ilike(f'%{search}%')).subquery()
+                away_team = session.query(Team).filter(Team.name.ilike(f'%{search}%')).subquery()
+                query = query.filter(or_(
+                    Match.home_team_id.in_(session.query(Team.id).filter(Team.name.ilike(f'%{search}%'))),
+                    Match.away_team_id.in_(session.query(Team.id).filter(Team.name.ilike(f'%{search}%')))
+                ))
+            query = query.order_by(Match.date_time.desc())
             total = query.count()
             matches = query.offset((page - 1) * per_page).limit(per_page).all()
 
@@ -180,35 +211,63 @@ def register_routes(app: Flask):
 
     @app.route('/api/players')
     def api_players():
-        """Get list of players."""
-        from src.database.models import Player
-        from sqlalchemy import or_
+        """Get list of players with MVP count and match count."""
+        from src.database.models import Player, BestPlayer, MatchPlayer
+        from sqlalchemy import or_, func
 
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', 100, type=int)
         search = request.args.get('search', '').strip()
+        sort = request.args.get('sort', 'name')  # 'name' or 'mvp'
 
         with db.session() as session:
-            query = session.query(Player)
+            # Subqueries for stats
+            mvp_sq = session.query(
+                BestPlayer.player_id,
+                func.count(BestPlayer.id).label('mvp_count')
+            ).filter(BestPlayer.player_id.isnot(None)).group_by(BestPlayer.player_id).subquery()
+
+            match_sq = session.query(
+                MatchPlayer.player_id,
+                func.count(MatchPlayer.id).label('match_count')
+            ).group_by(MatchPlayer.player_id).subquery()
+
+            query = session.query(
+                Player,
+                func.coalesce(mvp_sq.c.mvp_count, 0).label('mvp_count'),
+                func.coalesce(match_sq.c.match_count, 0).label('match_count')
+            ).outerjoin(
+                mvp_sq, Player.id == mvp_sq.c.player_id
+            ).outerjoin(
+                match_sq, Player.id == match_sq.c.player_id
+            )
+
             if search:
                 query = query.filter(or_(
                     Player.last_name.ilike(f'%{search}%'),
                     Player.first_name.ilike(f'%{search}%'),
                     Player.patronymic.ilike(f'%{search}%')
                 ))
-            query = query.order_by(Player.last_name)
+
+            if sort == 'mvp':
+                query = query.order_by(func.coalesce(mvp_sq.c.mvp_count, 0).desc())
+            else:
+                query = query.order_by(Player.last_name)
+
             total = query.count()
-            players = query.offset((page - 1) * per_page).limit(per_page).all()
+            rows = query.offset((page - 1) * per_page).limit(per_page).all()
 
             result = []
-            for p in players:
+            for r in rows:
                 result.append({
-                    'id': p.id,
-                    'site_id': p.site_id,
-                    'full_name': p.full_name,
-                    'birth_year': p.birth_year,
-                    'height': p.height,
-                    'position': p.position,
+                    'id': r.Player.id,
+                    'site_id': r.Player.site_id,
+                    'full_name': r.Player.full_name,
+                    'birth_year': r.Player.birth_year,
+                    'height': r.Player.height,
+                    'position': r.Player.position,
+                    'mvp_count': r.mvp_count,
+                    'match_count': r.match_count,
                 })
 
         return jsonify({
@@ -220,24 +279,123 @@ def register_routes(app: Flask):
 
     @app.route('/api/referees')
     def api_referees():
-        """Get list of referees."""
-        from src.database.models import Referee
-        from sqlalchemy import or_
+        """Get list of referees with match count and average rating."""
+        from src.database.models import Referee, Match
+        from sqlalchemy import or_, func
 
         search = request.args.get('search', '').strip()
 
         with db.session() as session:
-            query = session.query(Referee)
+            # Subquery for match count per referee
+            match_count_sq = session.query(
+                Match.referee_id,
+                func.count(Match.id).label('match_count')
+            ).filter(Match.referee_id.isnot(None)).group_by(Match.referee_id).subquery()
+
+            # Subquery for avg rating per referee
+            # Each match can have 0-2 ratings (home + away), avg all non-null
+            avg_rating_sq = session.query(
+                Match.referee_id,
+                (func.sum(
+                    func.coalesce(Match.referee_rating_home, 0) * (Match.referee_rating_home != None) +
+                    func.coalesce(Match.referee_rating_away, 0) * (Match.referee_rating_away != None)
+                ) * 1.0 / func.nullif(
+                    func.sum(
+                        (Match.referee_rating_home != None) + (Match.referee_rating_away != None)
+                    ), 0
+                )).label('avg_rating')
+            ).filter(Match.referee_id.isnot(None)).group_by(Match.referee_id).subquery()
+
+            query = session.query(
+                Referee,
+                func.coalesce(match_count_sq.c.match_count, 0).label('match_count'),
+                avg_rating_sq.c.avg_rating
+            ).outerjoin(
+                match_count_sq, Referee.id == match_count_sq.c.referee_id
+            ).outerjoin(
+                avg_rating_sq, Referee.id == avg_rating_sq.c.referee_id
+            )
+
             if search:
                 query = query.filter(or_(
                     Referee.last_name.ilike(f'%{search}%'),
                     Referee.first_name.ilike(f'%{search}%'),
                     Referee.patronymic.ilike(f'%{search}%')
                 ))
-            referees = query.order_by(Referee.last_name).all()
-            result = [{'id': r.id, 'full_name': r.full_name} for r in referees]
+
+            rows = query.order_by(func.coalesce(match_count_sq.c.match_count, 0).desc()).all()
+            result = [{
+                'id': r.Referee.id,
+                'full_name': r.Referee.full_name,
+                'match_count': r.match_count,
+                'avg_rating': round(r.avg_rating, 1) if r.avg_rating else None,
+            } for r in rows]
 
         return jsonify({'referees': result, 'total': len(result)})
+
+    @app.route('/api/referees/<int:referee_id>')
+    def api_referee_detail(referee_id):
+        """Get detailed referee info with match history."""
+        from src.database.models import Referee, Match
+        from sqlalchemy import or_, func
+
+        with db.session() as session:
+            referee = session.query(Referee).filter_by(id=referee_id).first()
+            if not referee:
+                return jsonify({'error': 'Referee not found'}), 404
+
+            # All matches for this referee
+            matches = session.query(Match).filter_by(
+                referee_id=referee_id
+            ).order_by(Match.date_time.desc()).all()
+
+            # Compute ratings
+            ratings = []
+            for m in matches:
+                if m.referee_rating_home is not None:
+                    ratings.append(m.referee_rating_home)
+                if m.referee_rating_away is not None:
+                    ratings.append(m.referee_rating_away)
+
+            matches_list = []
+            for m in matches:
+                matches_list.append({
+                    'id': m.id,
+                    'site_id': m.site_id,
+                    'date_time': m.date_time.isoformat() if m.date_time else None,
+                    'home_team': m.home_team.name if m.home_team else '?',
+                    'away_team': m.away_team.name if m.away_team else '?',
+                    'home_team_id': m.home_team_id,
+                    'away_team_id': m.away_team_id,
+                    'home_score': m.home_score,
+                    'away_score': m.away_score,
+                    'set_scores': m.set_scores,
+                    'rating_home': m.referee_rating_home,
+                    'rating_away': m.referee_rating_away,
+                    'rating_home_text': m.referee_rating_home_text,
+                    'rating_away_text': m.referee_rating_away_text,
+                })
+
+            result = {
+                'id': referee.id,
+                'full_name': referee.full_name,
+                'first_name': referee.first_name,
+                'last_name': referee.last_name,
+                'patronymic': referee.patronymic,
+                'stats': {
+                    'total_matches': len(matches),
+                    'avg_rating': round(sum(ratings) / len(ratings), 1) if ratings else None,
+                    'total_ratings': len(ratings),
+                    'rating_5': sum(1 for r in ratings if r == 5),
+                    'rating_4': sum(1 for r in ratings if r == 4),
+                    'rating_3': sum(1 for r in ratings if r == 3),
+                    'rating_2': sum(1 for r in ratings if r == 2),
+                    'rating_1': sum(1 for r in ratings if r == 1),
+                },
+                'matches': matches_list,
+            }
+
+        return jsonify(result)
 
     @app.route('/api/matches/<int:match_id>')
     def api_match_detail(match_id):

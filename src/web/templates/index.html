@@ -36,6 +36,8 @@ body { font-family: 'Inter', sans-serif; }
 .pulse-dot { animation: pulse-green 2s infinite; }
 .page { display: none; }
 .page.active { display: block; }
+.ref-tooltip { display: none; position: absolute; z-index: 40; pointer-events: none; }
+tr:hover .ref-tooltip { display: block; }
 </style>
 </head>
 <body class="bg-bg-dark text-white h-screen overflow-hidden flex font-display antialiased">
@@ -85,25 +87,18 @@ body { font-family: 'Inter', sans-serif; }
     <div class="grid grid-cols-4 gap-6 mb-6" id="kpi-cards"></div>
     <div class="flex gap-6 mb-6">
         <div class="w-[60%] bg-surface rounded-2xl p-6 shadow-lg border border-white/5">
-            <div class="flex justify-between items-center mb-6">
+            <div class="flex justify-between items-center mb-4">
                 <div>
                     <h2 class="text-lg font-bold text-white">Динамика матчей</h2>
                     <p class="text-xs text-slate-400 mt-1">Количество игр по месяцам</p>
                 </div>
+                <div id="chart-year-btns" class="flex gap-1 flex-wrap justify-end"></div>
             </div>
-            <div class="h-[250px] relative">
-                <svg class="w-full h-full" preserveAspectRatio="none" viewBox="0 0 800 200">
-                    <defs><linearGradient id="areaGrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#22d3ee" stop-opacity="0.3"/><stop offset="100%" stop-color="#22d3ee" stop-opacity="0"/></linearGradient></defs>
-                    <line opacity="0.1" stroke="#94a3b8" stroke-dasharray="4 4" stroke-width="1" x1="0" x2="800" y1="50" y2="50"/>
-                    <line opacity="0.1" stroke="#94a3b8" stroke-dasharray="4 4" stroke-width="1" x1="0" x2="800" y1="100" y2="100"/>
-                    <line opacity="0.1" stroke="#94a3b8" stroke-dasharray="4 4" stroke-width="1" x1="0" x2="800" y1="150" y2="150"/>
-                    <path d="M0,120 C60,110 120,140 180,130 C240,120 300,70 360,80 C420,90 480,50 540,40 C600,30 660,60 720,50 C760,45 780,30 800,20 L800,200 L0,200 Z" fill="url(#areaGrad)"/>
-                    <path d="M0,120 C60,110 120,140 180,130 C240,120 300,70 360,80 C420,90 480,50 540,40 C600,30 660,60 720,50 C760,45 780,30 800,20" fill="none" stroke="#22d3ee" stroke-linecap="round" stroke-width="3"/>
-                </svg>
+            <div class="h-[250px] relative" id="chart-container">
+                <svg id="chart-svg" class="w-full h-full"></svg>
+                <div id="chart-tooltip" class="fixed z-50 bg-bg-dark border border-white/10 rounded-lg px-3 py-2 text-xs pointer-events-none shadow-xl" style="display:none;"></div>
             </div>
-            <div class="flex justify-between mt-2 px-2 text-xs text-slate-500 font-medium">
-                <span>Янв</span><span>Фев</span><span>Мар</span><span>Апр</span><span>Май</span><span>Июн</span><span>Июл</span><span>Авг</span><span>Сен</span><span>Окт</span><span>Ноя</span><span>Дек</span>
-            </div>
+            <div id="chart-x-labels" class="flex justify-between mt-2 px-2 text-xs text-slate-500 font-medium"></div>
         </div>
         <div class="w-[40%] bg-surface rounded-2xl p-6 shadow-lg border border-white/5 flex flex-col items-center">
             <div class="w-full mb-2">
@@ -311,20 +306,124 @@ async function loadDashboard() {
     document.getElementById('db-stats-circle').innerHTML = `<div class="grid grid-cols-2 gap-4 w-full">${kpis.map(k => `
         <div class="text-center p-4 bg-bg-dark rounded-xl"><span class="material-symbols-outlined ${k.text} text-2xl mb-2">${k.icon}</span><p class="text-2xl font-bold text-white">${k.value}</p><p class="text-xs text-slate-400 mt-1">${k.label}</p></div>
     `).join('')}</div>`;
-    const playersData = await api('/api/players?per_page=10');
-    document.getElementById('top-players-table').innerHTML = `<table class="w-full text-sm"><thead class="bg-white/5 text-slate-400 uppercase text-xs tracking-wider"><tr><th class="px-6 py-3">#</th><th class="px-6 py-3">Игрок</th><th class="px-6 py-3 text-center">Рост</th><th class="px-6 py-3 text-right">Год</th></tr></thead><tbody class="divide-y divide-white/5">${playersData.players.map((p, i) => `
-        <tr class="hover:bg-white/5 transition-colors cursor-pointer" onclick="showPlayerDetail(${p.id})"><td class="px-6 py-3 font-bold ${i < 3 ? 'text-amber-400' : 'text-slate-500'}">${i + 1}</td><td class="px-6 py-3"><span class="font-semibold text-white">${p.full_name}</span></td><td class="px-6 py-3 text-center text-slate-400">${p.height || '-'}</td><td class="px-6 py-3 text-right text-slate-400">${p.birth_year || '-'}</td></tr>
+    const playersData = await api('/api/players?per_page=10&sort=mvp');
+    document.getElementById('top-players-table').innerHTML = `<table class="w-full text-sm"><thead class="bg-white/5 text-slate-400 uppercase text-xs tracking-wider"><tr><th class="px-6 py-3">#</th><th class="px-6 py-3">Игрок</th><th class="px-6 py-3 text-center">Матчей</th><th class="px-6 py-3 text-right">MVP</th></tr></thead><tbody class="divide-y divide-white/5">${playersData.players.map((p, i) => `
+        <tr class="hover:bg-white/5 transition-colors cursor-pointer" onclick="showPlayerDetail(${p.id})"><td class="px-6 py-3 font-bold ${i < 3 ? 'text-amber-400' : 'text-slate-500'}">${i + 1}</td><td class="px-6 py-3"><span class="font-semibold text-white">${p.full_name}</span></td><td class="px-6 py-3 text-center text-slate-400">${p.match_count}</td><td class="px-6 py-3 text-right font-bold text-amber-400">${p.mvp_count}</td></tr>
     `).join('')}</tbody></table>`;
     const refsData = await api('/api/referees');
-    document.getElementById('top-referees-table').innerHTML = `<table class="w-full text-sm"><thead class="bg-white/5 text-slate-400 uppercase text-xs tracking-wider"><tr><th class="px-6 py-3">#</th><th class="px-6 py-3">Судья</th></tr></thead><tbody class="divide-y divide-white/5">${refsData.referees.slice(0, 10).map((r, i) => `
-        <tr class="hover:bg-white/5 transition-colors cursor-pointer"><td class="px-6 py-3 font-bold ${i < 3 ? 'text-amber-400' : 'text-slate-500'}">${i + 1}</td><td class="px-6 py-3"><div class="flex items-center gap-3"><div class="size-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-300">${r.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)}</div><span class="font-semibold text-white">${r.full_name}</span></div></td></tr>
-    `).join('')}</tbody></table>`;
+    document.getElementById('top-referees-table').innerHTML = `<table class="w-full text-sm"><thead class="bg-white/5 text-slate-400 uppercase text-xs tracking-wider"><tr><th class="px-6 py-3">#</th><th class="px-6 py-3">Судья</th><th class="px-6 py-3 text-center">Матчей</th><th class="px-6 py-3 text-right">Рейтинг</th></tr></thead><tbody class="divide-y divide-white/5">${refsData.referees.slice(0, 10).map((r, i) => {
+        const rc = r.avg_rating >= 4 ? 'text-emerald-400' : r.avg_rating >= 3 ? 'text-amber-400' : r.avg_rating ? 'text-red-400' : 'text-slate-500';
+        return `<tr class="hover:bg-white/5 transition-colors cursor-pointer"><td class="px-6 py-3 font-bold ${i < 3 ? 'text-amber-400' : 'text-slate-500'}">${i + 1}</td><td class="px-6 py-3"><div class="flex items-center gap-3"><div class="size-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-300">${r.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)}</div><span class="font-semibold text-white">${r.full_name}</span></div></td><td class="px-6 py-3 text-center font-medium">${r.match_count}</td><td class="px-6 py-3 text-right ${rc} font-medium">${r.avg_rating != null ? r.avg_rating : '-'}</td></tr>`;
+    }).join('')}</tbody></table>`;
+    // Load chart
+    loadChart();
+}
+
+let chartData = null;
+let chartYear = 'all';
+async function loadChart() {
+    if (!chartData) chartData = await api('/api/stats/monthly');
+    const years = chartData.years;
+    // Year filter buttons
+    document.getElementById('chart-year-btns').innerHTML = `<button onclick="setChartYear('all')" class="px-2.5 py-1 rounded-lg text-xs font-medium ${chartYear === 'all' ? 'bg-primary text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'} transition">Все</button>` + years.map(y => `<button onclick="setChartYear(${y})" class="px-2.5 py-1 rounded-lg text-xs font-medium ${chartYear === y ? 'bg-primary text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'} transition">${y}</button>`).join('');
+    // Filter data
+    let points;
+    const monthNames = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+    if (chartYear === 'all') {
+        // Group by year-month across all years, show all months chronologically
+        points = chartData.data.map(d => ({ label: `${monthNames[d.month-1]} ${d.year}`, count: d.count, month: d.month, year: d.year }));
+    } else {
+        // Show 12 months for selected year, fill gaps with 0
+        points = [];
+        for (let m = 1; m <= 12; m++) {
+            const found = chartData.data.find(d => d.year === chartYear && d.month === m);
+            points.push({ label: monthNames[m-1], count: found ? found.count : 0, month: m, year: chartYear });
+        }
+    }
+    if (!points.length) return;
+    renderChart(points);
+}
+function setChartYear(y) { chartYear = y; loadChart(); }
+
+function renderChart(points) {
+    const svg = document.getElementById('chart-svg');
+    const container = document.getElementById('chart-container');
+    const W = container.clientWidth;
+    const H = 250;
+    const pad = { top: 20, right: 10, bottom: 5, left: 40 };
+    const cw = W - pad.left - pad.right;
+    const ch = H - pad.top - pad.bottom;
+    const maxVal = Math.max(...points.map(p => p.count), 1);
+    // Round up maxVal for nice grid lines
+    const gridMax = Math.ceil(maxVal / 50) * 50 || 50;
+    const xStep = cw / Math.max(points.length - 1, 1);
+    const coords = points.map((p, i) => ({ x: pad.left + i * xStep, y: pad.top + ch - (p.count / gridMax) * ch, ...p }));
+
+    // Build SVG
+    let svgContent = `<defs><linearGradient id="areaGrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#22d3ee" stop-opacity="0.3"/><stop offset="100%" stop-color="#22d3ee" stop-opacity="0"/></linearGradient></defs>`;
+    // Grid lines + labels
+    for (let i = 0; i <= 4; i++) {
+        const yy = pad.top + ch - (i / 4) * ch;
+        const val = Math.round(gridMax * i / 4);
+        svgContent += `<line x1="${pad.left}" x2="${W - pad.right}" y1="${yy}" y2="${yy}" stroke="#94a3b8" stroke-dasharray="4 4" opacity="0.1"/>`;
+        svgContent += `<text x="${pad.left - 6}" y="${yy + 4}" fill="#64748b" font-size="10" text-anchor="end">${val}</text>`;
+    }
+    // Area + line path
+    if (coords.length > 1) {
+        const linePts = coords.map(c => `${c.x},${c.y}`).join(' L');
+        const areaPath = `M${coords[0].x},${coords[0].y} L${linePts} L${coords[coords.length-1].x},${pad.top + ch} L${coords[0].x},${pad.top + ch} Z`;
+        svgContent += `<path d="${areaPath}" fill="url(#areaGrad)"/>`;
+        svgContent += `<path d="M${linePts}" fill="none" stroke="#22d3ee" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"/>`;
+    }
+    // Invisible hover areas + dots
+    coords.forEach((c, i) => {
+        svgContent += `<circle cx="${c.x}" cy="${c.y}" r="3.5" fill="#22d3ee" stroke="#1a1d28" stroke-width="2" opacity="0"/>`;
+        svgContent += `<rect x="${c.x - xStep/2}" y="${pad.top}" width="${xStep}" height="${ch}" fill="transparent" class="chart-hover-area" data-idx="${i}"/>`;
+    });
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.innerHTML = svgContent;
+
+    // X labels
+    const labelsEl = document.getElementById('chart-x-labels');
+    if (chartYear !== 'all' || points.length <= 24) {
+        const step = points.length > 12 ? Math.ceil(points.length / 12) : 1;
+        labelsEl.innerHTML = points.filter((_, i) => i % step === 0).map(p => `<span>${p.label}</span>`).join('');
+    } else {
+        // Show just years for "all" with many points
+        const shownYears = [...new Set(points.map(p => p.year))];
+        labelsEl.innerHTML = shownYears.map(y => `<span>${y}</span>`).join('');
+    }
+
+    // Tooltip interaction
+    const tooltip = document.getElementById('chart-tooltip');
+    const circles = svg.querySelectorAll('circle');
+    svg.querySelectorAll('.chart-hover-area').forEach(rect => {
+        rect.addEventListener('mouseenter', e => {
+            const idx = +e.target.dataset.idx;
+            const c = coords[idx];
+            circles[idx].setAttribute('opacity', '1');
+            const svgRect = svg.getBoundingClientRect();
+            const tipX = svgRect.left + (c.x / W) * svgRect.width;
+            const tipY = svgRect.top + (c.y / H) * svgRect.height;
+            tooltip.innerHTML = `<span class="text-white font-bold">${c.count}</span> <span class="text-slate-400">матчей</span><br><span class="text-slate-500">${c.label}</span>`;
+            tooltip.style.display = 'block';
+            tooltip.style.left = (tipX - 40) + 'px';
+            tooltip.style.top = (tipY - 52) + 'px';
+        });
+        rect.addEventListener('mouseleave', e => {
+            const idx = +e.target.dataset.idx;
+            circles[idx].setAttribute('opacity', '0');
+            tooltip.style.display = 'none';
+        });
+    });
 }
 
 let matchesPage = 1;
 async function loadMatches(page = 1) {
     matchesPage = page;
-    const data = await api(`/api/matches?page=${page}&per_page=20`);
+    const search = document.getElementById('match-search')?.value || '';
+    const data = await api(`/api/matches?page=${page}&per_page=20${search ? '&search=' + encodeURIComponent(search) : ''}`);
     document.getElementById('matches-tbody').innerHTML = data.matches.map(m => {
         const hw = m.home_score > m.away_score;
         return `<tr class="hover:bg-white/5 transition-colors cursor-pointer" onclick="showMatchDetail(${m.id})"><td class="px-4 py-3 text-slate-500 text-xs">${m.site_id}</td><td class="px-4 py-3 text-slate-400">${m.date_time ? new Date(m.date_time).toLocaleDateString('ru') : '-'}</td><td class="px-4 py-3 ${hw ? 'text-white font-bold' : 'text-slate-400'}">${m.home_team || '-'}</td><td class="px-4 py-3 text-center"><span class="${hw ? 'text-emerald-400' : 'text-red-400'} font-bold text-lg">${m.home_score ?? '-'}</span><span class="text-slate-500 mx-1">:</span><span class="${!hw ? 'text-emerald-400' : 'text-red-400'} font-bold text-lg">${m.away_score ?? '-'}</span></td><td class="px-4 py-3 ${!hw ? 'text-white font-bold' : 'text-slate-400'}">${m.away_team || '-'}</td><td class="px-4 py-3 text-slate-500 text-xs">${m.set_scores || '-'}</td><td class="px-4 py-3 text-cyan-400 text-xs">${m.referee || '-'}</td></tr>`;
@@ -355,21 +454,115 @@ async function loadPlayers(page = 1) {
             <div class="w-16 h-16 rounded-full bg-slate-700 flex items-center justify-center text-xl font-bold text-slate-400 border-2 border-white/10 mb-4">${p.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)}</div>
             <h3 class="text-lg font-bold text-white mb-0.5">${p.full_name}</h3>
             <p class="text-sm text-slate-500 mb-4">${p.position || ''} ${p.birth_year ? '(' + p.birth_year + ')' : ''}</p>
-            <div class="grid grid-cols-2 gap-2 pt-3 border-t border-white/5 text-center"><div><div class="text-xs text-slate-500 mb-1">Рост</div><div class="text-sm font-bold text-white">${p.height || '-'}</div></div><div><div class="text-xs text-slate-500 mb-1">Год</div><div class="text-sm font-bold text-white">${p.birth_year || '-'}</div></div></div>
+            <div class="grid grid-cols-3 gap-2 pt-3 border-t border-white/5 text-center"><div><div class="text-xs text-slate-500 mb-1">Рост</div><div class="text-sm font-bold text-white">${p.height || '-'}</div></div><div><div class="text-xs text-slate-500 mb-1">Матчей</div><div class="text-sm font-bold text-white">${p.match_count || 0}</div></div><div><div class="text-xs text-slate-500 mb-1">MVP</div><div class="text-sm font-bold text-amber-400">${p.mvp_count || 0}</div></div></div>
         </div>
     `).join('');
     const tp = Math.ceil(data.total / 20);
     document.getElementById('players-pagination').innerHTML = `<div class="flex gap-1 items-center">${page > 1 ? `<button onclick="loadPlayers(${page-1})" class="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 text-sm">Назад</button>` : ''}<span class="text-sm text-slate-400 mx-3">Стр. ${page} из ${tp}</span>${page < tp ? `<button onclick="loadPlayers(${page+1})" class="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 text-sm">Далее</button>` : ''}</div>`;
 }
 
+// Referee tooltip cache
+const refTooltipCache = {};
 async function loadReferees() {
     const search = document.getElementById('referees-search')?.value || '';
     const data = await api(search ? `/api/referees?search=${encodeURIComponent(search)}` : '/api/referees');
     document.getElementById('referees-tbody').innerHTML = data.referees.map((r, i) => {
         const ini = r.full_name.split(' ').map(n => n[0]).join('').slice(0, 2);
         const rc = i === 0 ? 'text-amber-400' : i === 1 ? 'text-slate-300' : i === 2 ? 'text-amber-700' : 'text-slate-600';
-        return `<tr class="hover:bg-white/5 transition-colors cursor-pointer"><td class="px-6 py-4 font-bold ${rc}">${i < 3 ? '<span class="material-symbols-outlined text-sm" style="font-variation-settings:\'FILL\' 1">emoji_events</span>' : (i + 1)}</td><td class="px-6 py-4"><div class="flex items-center gap-3"><div class="size-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-300">${ini}</div><span class="font-semibold text-white">${r.full_name}</span></div></td><td class="px-6 py-4 text-center font-medium">-</td><td class="px-6 py-4 text-right text-slate-400">-</td></tr>`;
+        const ratingColor = r.avg_rating >= 4 ? 'text-emerald-400' : r.avg_rating >= 3 ? 'text-amber-400' : r.avg_rating ? 'text-red-400' : 'text-slate-500';
+        return `<tr class="hover:bg-white/5 transition-colors cursor-pointer relative" onclick="showRefereeDetail(${r.id})" onmouseenter="showRefTooltip(event,${r.id})" onmouseleave="hideRefTooltip()"><td class="px-6 py-4 font-bold ${rc}">${i < 3 ? '<span class="material-symbols-outlined text-sm" style="font-variation-settings:\'FILL\' 1">emoji_events</span>' : (i + 1)}</td><td class="px-6 py-4"><div class="flex items-center gap-3"><div class="size-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-300">${ini}</div><span class="font-semibold text-white">${r.full_name}</span></div></td><td class="px-6 py-4 text-center font-medium">${r.match_count || 0}</td><td class="px-6 py-4 text-right ${ratingColor} font-medium">${r.avg_rating != null ? r.avg_rating : '-'}</td></tr>`;
     }).join('');
+}
+
+let refTooltipEl = null;
+function hideRefTooltip() { if (refTooltipEl) { refTooltipEl.remove(); refTooltipEl = null; } }
+async function showRefTooltip(e, refId) {
+    hideRefTooltip();
+    const tr = e.currentTarget;
+    const rect = tr.getBoundingClientRect();
+    // Create tooltip
+    refTooltipEl = document.createElement('div');
+    refTooltipEl.className = 'fixed z-50 bg-surface border border-white/10 rounded-xl shadow-2xl p-4 w-[340px] pointer-events-none';
+    refTooltipEl.style.left = (rect.right - 360) + 'px';
+    refTooltipEl.style.top = (rect.bottom + 4) + 'px';
+    refTooltipEl.innerHTML = '<div class="flex items-center gap-2 text-slate-400 text-xs"><span class="material-symbols-outlined text-sm">hourglass_top</span>Загрузка...</div>';
+    document.body.appendChild(refTooltipEl);
+    // Fetch data
+    if (!refTooltipCache[refId]) {
+        try { refTooltipCache[refId] = await api(`/api/referees/${refId}`); } catch(e) { hideRefTooltip(); return; }
+    }
+    if (!refTooltipEl) return; // user already moved away
+    const d = refTooltipCache[refId];
+    const last5 = d.matches.slice(0, 5);
+    const fd = iso => iso ? new Date(iso).toLocaleDateString('ru') : '-';
+    refTooltipEl.innerHTML = `
+        <p class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Последние матчи</p>
+        ${last5.length ? last5.map(m => `<div class="flex items-center gap-2 text-xs py-1.5 border-b border-white/5 last:border-0">
+            <span class="text-slate-500 w-[70px] shrink-0">${fd(m.date_time)}</span>
+            <span class="text-white truncate flex-1">${m.home_team} <span class="text-slate-500">vs</span> ${m.away_team}</span>
+            <span class="font-bold ${m.home_score > m.away_score ? 'text-emerald-400' : 'text-red-400'} shrink-0">${m.home_score}:${m.away_score}</span>
+            ${m.rating_home != null || m.rating_away != null ? `<span class="text-amber-400 shrink-0">${[m.rating_home, m.rating_away].filter(x => x != null).join('/')}</span>` : ''}
+        </div>`).join('') : '<p class="text-xs text-slate-500">Нет матчей</p>'}
+        <p class="text-[10px] text-slate-500 mt-2 text-center">Нажмите для просмотра профиля</p>`;
+    // Reposition if goes off screen
+    const tipRect = refTooltipEl.getBoundingClientRect();
+    if (tipRect.bottom > window.innerHeight) refTooltipEl.style.top = (rect.top - tipRect.height - 4) + 'px';
+    if (tipRect.left < 0) refTooltipEl.style.left = '8px';
+}
+
+async function showRefereeDetail(id) {
+    hideRefTooltip();
+    const d = refTooltipCache[id] || await api(`/api/referees/${id}`);
+    refTooltipCache[id] = d;
+    document.getElementById('modal-title').textContent = d.full_name;
+    const fd = iso => iso ? new Date(iso).toLocaleDateString('ru') : '-';
+    const s = d.stats;
+    const rc = s.avg_rating >= 4 ? 'text-emerald-400' : s.avg_rating >= 3 ? 'text-amber-400' : s.avg_rating ? 'text-red-400' : 'text-slate-500';
+    // Rating distribution bar
+    const total = s.total_ratings || 1;
+    const bars = [
+        { n: 5, count: s.rating_5, color: 'bg-emerald-500' },
+        { n: 4, count: s.rating_4, color: 'bg-emerald-400' },
+        { n: 3, count: s.rating_3, color: 'bg-amber-400' },
+        { n: 2, count: s.rating_2, color: 'bg-orange-500' },
+        { n: 1, count: s.rating_1, color: 'bg-red-500' },
+    ];
+    document.getElementById('modal-content').innerHTML = `
+        <div class="flex items-center gap-4 mb-6">
+            <div class="size-16 rounded-full bg-slate-700 flex items-center justify-center text-2xl font-bold text-slate-300 border-2 border-white/10">${d.full_name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>
+            <div>
+                <p class="text-xl font-bold text-white">${d.full_name}</p>
+                <p class="text-sm text-slate-400 mt-1"><span class="material-symbols-outlined text-sm align-middle">sports</span> Судья</p>
+            </div>
+        </div>
+        <div class="grid grid-cols-3 gap-4 mb-6">
+            <div class="text-center p-4 bg-bg-dark rounded-xl"><p class="text-2xl font-bold text-white">${s.total_matches}</p><p class="text-xs text-slate-500 mt-1">Матчей</p></div>
+            <div class="text-center p-4 bg-bg-dark rounded-xl"><p class="text-2xl font-bold ${rc}">${s.avg_rating || '-'}</p><p class="text-xs text-slate-500 mt-1">Средний рейтинг</p></div>
+            <div class="text-center p-4 bg-bg-dark rounded-xl"><p class="text-2xl font-bold text-white">${s.total_ratings}</p><p class="text-xs text-slate-500 mt-1">Оценок</p></div>
+        </div>
+        <div class="bg-bg-dark rounded-xl p-4 mb-6">
+            <h3 class="font-bold text-sm mb-3">Распределение оценок</h3>
+            ${bars.map(b => `<div class="flex items-center gap-3 mb-1.5"><span class="text-xs text-slate-400 w-4 text-right">${b.n}</span><div class="flex-1 h-4 bg-black/20 rounded-full overflow-hidden"><div class="${b.color} h-full rounded-full" style="width:${Math.round(b.count/total*100)}%"></div></div><span class="text-xs text-slate-500 w-8">${b.count}</span></div>`).join('')}
+        </div>
+        <div class="flex items-center gap-3 mb-3">
+            <h3 class="font-bold">Матчи (${d.matches.length})</h3>
+            <input type="text" id="ref-match-search" placeholder="Поиск по команде..." class="bg-input-bg border-0 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:ring-2 focus:ring-primary w-48 ml-auto"/>
+        </div>
+        <div id="ref-matches-list" class="max-h-[300px] overflow-y-auto space-y-1"></div>`;
+    // Render matches and setup search
+    const renderRefMatches = (filter) => {
+        const f = (filter || '').toLowerCase();
+        const filtered = f ? d.matches.filter(m => m.home_team.toLowerCase().includes(f) || m.away_team.toLowerCase().includes(f)) : d.matches;
+        document.getElementById('ref-matches-list').innerHTML = filtered.length ? filtered.map(m => `<div class="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/[0.02] hover:bg-white/5 cursor-pointer text-sm" onclick="showMatchDetail(${m.id})">
+            <span class="text-slate-500 w-[70px] shrink-0">${fd(m.date_time)}</span>
+            <span class="text-white truncate flex-1">${m.home_team} <span class="text-slate-500 mx-1">vs</span> ${m.away_team}</span>
+            <span class="font-bold shrink-0 ${m.home_score > m.away_score ? 'text-emerald-400' : m.home_score < m.away_score ? 'text-red-400' : 'text-slate-400'}">${m.home_score}:${m.away_score}</span>
+            ${m.rating_home != null || m.rating_away != null ? `<span class="text-xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 shrink-0">${[m.rating_home, m.rating_away].filter(x => x != null).join('/')}</span>` : ''}
+        </div>`).join('') : '<p class="text-sm text-slate-500 text-center py-4">Ничего не найдено</p>';
+    };
+    renderRefMatches('');
+    document.getElementById('ref-match-search').addEventListener('input', e => renderRefMatches(e.target.value));
+    document.getElementById('detail-modal').style.display = 'flex';
 }
 
 async function showMatchDetail(id) {
@@ -386,7 +579,8 @@ async function showMatchDetail(id) {
         ${d.referee ? `<p class="text-sm text-slate-400 mb-4">Судья: <span class="text-cyan-400">${d.referee.full_name}</span></p>` : ''}
         ${d.home_roster?.length ? `<h3 class="font-bold mb-2 mt-4">${d.home_team?.name || 'Хозяева'}</h3><div class="flex flex-wrap gap-2 mb-4">${d.home_roster.map(p => `<span class="px-3 py-1 rounded-lg bg-white/5 text-sm cursor-pointer hover:bg-primary/20 transition" onclick="showPlayerDetail(${p.id})">${p.full_name}</span>`).join('')}</div>` : ''}
         ${d.away_roster?.length ? `<h3 class="font-bold mb-2">${d.away_team?.name || 'Гости'}</h3><div class="flex flex-wrap gap-2 mb-4">${d.away_roster.map(p => `<span class="px-3 py-1 rounded-lg bg-white/5 text-sm cursor-pointer hover:bg-primary/20 transition" onclick="showPlayerDetail(${p.id})">${p.full_name}</span>`).join('')}</div>` : ''}
-        ${d.best_players?.length ? `<h3 class="font-bold mb-2 mt-4">Лучшие игроки</h3><div class="flex flex-wrap gap-2">${d.best_players.map(bp => `<span class="px-3 py-1 rounded-lg bg-amber-500/10 text-amber-400 text-sm"><span class="material-symbols-outlined text-[14px] align-middle" style="font-variation-settings:'FILL' 1">star</span> ${bp.player_name} (${bp.team || ''})</span>`).join('')}</div>` : ''}`;
+        ${d.best_players?.length ? `<h3 class="font-bold mb-2 mt-4">Лучшие игроки</h3><div class="flex flex-wrap gap-2">${d.best_players.map(bp => `<span class="px-3 py-1 rounded-lg bg-amber-500/10 text-amber-400 text-sm"><span class="material-symbols-outlined text-[14px] align-middle" style="font-variation-settings:'FILL' 1">star</span> ${bp.player_name} (${bp.team || ''})</span>`).join('')}</div>` : ''}
+        <div class="mt-6 pt-4 border-t border-white/5 flex justify-end"><a href="https://volleymsk.ru/match.php?id=${d.site_id}" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-primary transition"><span class="material-symbols-outlined text-sm">open_in_new</span>Источник на volleymsk.ru</a></div>`;
     document.getElementById('detail-modal').style.display = 'flex';
 }
 
