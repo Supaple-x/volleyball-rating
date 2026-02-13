@@ -7,17 +7,22 @@ from flask import Flask, render_template, jsonify, request
 from src.database.db import Database
 from src.services.parsing_service import ParsingService
 from src.services.data_service import DataService
+from src.services.bc_parsing_service import BCParsingService
+from src.services.bc_data_service import BCDataService
+from src.services.scheduler import AutoUpdater
 
 logger = logging.getLogger(__name__)
 
 # Global instances
 db: Database = None
 parsing_service: ParsingService = None
+bc_parsing_service: BCParsingService = None
+auto_updater: AutoUpdater = None
 
 
 def create_app(db_path: str = None) -> Flask:
     """Create and configure Flask application."""
-    global db, parsing_service
+    global db, parsing_service, bc_parsing_service, auto_updater
 
     app = Flask(__name__,
                 template_folder=os.path.join(os.path.dirname(__file__), 'templates'),
@@ -31,11 +36,17 @@ def create_app(db_path: str = None) -> Flask:
     db = Database(db_path)
     db.create_tables()
 
-    # Initialize parsing service
+    # Initialize parsing services
     parsing_service = ParsingService(db)
+    bc_parsing_service = BCParsingService(db)
+
+    # Start auto-updater daemon
+    auto_updater = AutoUpdater(db)
+    auto_updater.start()
 
     # Register routes
     register_routes(app)
+    register_bc_routes(app)
 
     return app
 
@@ -195,30 +206,120 @@ def register_routes(app: Flask):
 
     @app.route('/api/teams')
     def api_teams():
-        """Get list of teams."""
-        from src.database.models import Team
+        """Get list of teams with stats, sorting, pagination, gender filter."""
+        from src.database.models import Team, Match
+        from sqlalchemy import func
 
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
         search = request.args.get('search', '').strip()
+        sort = request.args.get('sort', 'name')
+        gender = request.args.get('gender', '').strip()
 
         with db.session() as session:
-            query = session.query(Team)
+            # Subqueries for match counts (home + away)
+            home_count_sq = session.query(
+                Match.home_team_id.label('team_id'),
+                func.count(Match.id).label('cnt')
+            ).filter(Match.home_team_id.isnot(None)).group_by(Match.home_team_id).subquery()
+
+            away_count_sq = session.query(
+                Match.away_team_id.label('team_id'),
+                func.count(Match.id).label('cnt')
+            ).filter(Match.away_team_id.isnot(None)).group_by(Match.away_team_id).subquery()
+
+            # Subqueries for wins
+            home_wins_sq = session.query(
+                Match.home_team_id.label('team_id'),
+                func.count(Match.id).label('cnt')
+            ).filter(
+                Match.home_team_id.isnot(None),
+                Match.home_score > Match.away_score
+            ).group_by(Match.home_team_id).subquery()
+
+            away_wins_sq = session.query(
+                Match.away_team_id.label('team_id'),
+                func.count(Match.id).label('cnt')
+            ).filter(
+                Match.away_team_id.isnot(None),
+                Match.away_score > Match.home_score
+            ).group_by(Match.away_team_id).subquery()
+
+            match_count_expr = (
+                func.coalesce(home_count_sq.c.cnt, 0) +
+                func.coalesce(away_count_sq.c.cnt, 0)
+            )
+            wins_expr = (
+                func.coalesce(home_wins_sq.c.cnt, 0) +
+                func.coalesce(away_wins_sq.c.cnt, 0)
+            )
+
+            query = session.query(
+                Team,
+                match_count_expr.label('match_count'),
+                wins_expr.label('wins'),
+            ).outerjoin(
+                home_count_sq, Team.id == home_count_sq.c.team_id
+            ).outerjoin(
+                away_count_sq, Team.id == away_count_sq.c.team_id
+            ).outerjoin(
+                home_wins_sq, Team.id == home_wins_sq.c.team_id
+            ).outerjoin(
+                away_wins_sq, Team.id == away_wins_sq.c.team_id
+            )
+
             if search:
                 query = query.filter(Team.name.ilike(f'%{search}%'))
-            teams = query.order_by(Team.name).all()
-            result = [{'id': t.id, 'site_id': t.site_id, 'name': t.name} for t in teams]
+            if gender:
+                query = query.filter(Team.gender == gender)
 
-        return jsonify({'teams': result, 'total': len(result)})
+            if sort == 'matches':
+                query = query.order_by(match_count_expr.desc())
+            elif sort == 'wins':
+                query = query.order_by(wins_expr.desc())
+            elif sort == 'win_rate':
+                query = query.order_by(
+                    (wins_expr * 100.0 / func.nullif(match_count_expr, 0)).desc()
+                )
+            else:
+                query = query.order_by(Team.name)
+
+            total = query.count()
+            rows = query.offset((page - 1) * per_page).limit(per_page).all()
+
+            result = []
+            for r in rows:
+                mc = r.match_count
+                w = r.wins
+                result.append({
+                    'id': r.Team.id,
+                    'site_id': r.Team.site_id,
+                    'name': r.Team.name,
+                    'gender': r.Team.gender,
+                    'match_count': mc,
+                    'wins': w,
+                    'losses': mc - w,
+                    'win_rate': round(w / mc * 100, 1) if mc > 0 else 0,
+                })
+
+        return jsonify({
+            'teams': result,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+        })
 
     @app.route('/api/players')
     def api_players():
-        """Get list of players with MVP count and match count."""
-        from src.database.models import Player, BestPlayer, MatchPlayer
+        """Get list of players with MVP count, match count, gender filter."""
+        from src.database.models import Player, BestPlayer, MatchPlayer, Team
         from sqlalchemy import or_, func
 
         page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 100, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
         search = request.args.get('search', '').strip()
-        sort = request.args.get('sort', 'name')  # 'name' or 'mvp'
+        sort = request.args.get('sort', 'mvp')
+        gender = request.args.get('gender', '').strip()
 
         with db.session() as session:
             # Subqueries for stats
@@ -249,8 +350,23 @@ def register_routes(app: Flask):
                     Player.patronymic.ilike(f'%{search}%')
                 ))
 
+            if gender:
+                # Filter players by team gender via MatchPlayer
+                gender_player_ids = session.query(
+                    MatchPlayer.player_id
+                ).join(
+                    Team, MatchPlayer.team_id == Team.id
+                ).filter(
+                    Team.gender == gender
+                ).distinct().subquery()
+                query = query.filter(Player.id.in_(
+                    session.query(gender_player_ids.c.player_id)
+                ))
+
             if sort == 'mvp':
                 query = query.order_by(func.coalesce(mvp_sq.c.mvp_count, 0).desc())
+            elif sort == 'matches':
+                query = query.order_by(func.coalesce(match_sq.c.match_count, 0).desc())
             else:
                 query = query.order_by(Player.last_name)
 
@@ -673,4 +789,564 @@ def register_routes(app: Flask):
                 'matches': matches_list,
             }
 
+        return jsonify(result)
+
+    @app.route('/api/autoupdate/status')
+    def api_autoupdate_status():
+        return jsonify(auto_updater.get_status())
+
+
+def register_bc_routes(app: Flask):
+    """Register Business Champions League routes."""
+
+    # ---- Parsing control ----
+
+    @app.route('/api/bc/progress')
+    def api_bc_progress():
+        return jsonify(bc_parsing_service.get_progress())
+
+    @app.route('/api/bc/parse/full-season', methods=['POST'])
+    def api_bc_parse_full_season():
+        if bc_parsing_service.is_running:
+            return jsonify({'error': 'BC parsing already in progress'}), 400
+        data = request.get_json()
+        season_num = data.get('season_num', 30)
+        skip_existing = data.get('skip_existing', True)
+        try:
+            bc_parsing_service.start_full_season(season_num, skip_existing)
+            return jsonify({'status': 'started', 'season_num': season_num})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/bc/parse/all-seasons', methods=['POST'])
+    def api_bc_parse_all_seasons():
+        if bc_parsing_service.is_running:
+            return jsonify({'error': 'BC parsing already in progress'}), 400
+        data = request.get_json()
+        start = data.get('start', 1)
+        end = data.get('end', 30)
+        skip_existing = data.get('skip_existing', True)
+        try:
+            bc_parsing_service.start_all_seasons(start, end, skip_existing)
+            return jsonify({'status': 'started', 'start': start, 'end': end})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/bc/parse/schedule', methods=['POST'])
+    def api_bc_parse_schedule():
+        if bc_parsing_service.is_running:
+            return jsonify({'error': 'BC parsing already in progress'}), 400
+        data = request.get_json()
+        season_num = data.get('season_num', 30)
+        try:
+            bc_parsing_service.start_schedule(season_num)
+            return jsonify({'status': 'started', 'season_num': season_num})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/bc/parse/matches', methods=['POST'])
+    def api_bc_parse_matches():
+        if bc_parsing_service.is_running:
+            return jsonify({'error': 'BC parsing already in progress'}), 400
+        data = request.get_json()
+        season_num = data.get('season_num', 30)
+        skip_existing = data.get('skip_existing', True)
+        try:
+            bc_parsing_service.start_matches(season_num, skip_existing)
+            return jsonify({'status': 'started', 'season_num': season_num})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/bc/parse/players', methods=['POST'])
+    def api_bc_parse_players():
+        if bc_parsing_service.is_running:
+            return jsonify({'error': 'BC parsing already in progress'}), 400
+        data = request.get_json()
+        season_num = data.get('season_num', 30)
+        try:
+            bc_parsing_service.start_players(season_num)
+            return jsonify({'status': 'started', 'season_num': season_num})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/bc/parse/referees', methods=['POST'])
+    def api_bc_parse_referees():
+        if bc_parsing_service.is_running:
+            return jsonify({'error': 'BC parsing already in progress'}), 400
+        data = request.get_json()
+        season_num = data.get('season_num', 30)
+        try:
+            bc_parsing_service.start_referees(season_num)
+            return jsonify({'status': 'started', 'season_num': season_num})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/bc/parse/pause', methods=['POST'])
+    def api_bc_parse_pause():
+        bc_parsing_service.pause()
+        return jsonify({'status': 'paused'})
+
+    @app.route('/api/bc/parse/resume', methods=['POST'])
+    def api_bc_parse_resume():
+        bc_parsing_service.resume()
+        return jsonify({'status': 'resumed'})
+
+    @app.route('/api/bc/parse/stop', methods=['POST'])
+    def api_bc_parse_stop():
+        bc_parsing_service.stop()
+        return jsonify({'status': 'stopped'})
+
+    # ---- Data endpoints ----
+
+    @app.route('/api/bc/stats')
+    def api_bc_stats():
+        with db.session() as session:
+            svc = BCDataService(session)
+            return jsonify(svc.get_stats())
+
+    @app.route('/api/bc/stats/monthly')
+    def api_bc_stats_monthly():
+        from src.database.models import BCMatch
+        from sqlalchemy import func, extract
+        with db.session() as session:
+            data = session.query(
+                extract('year', BCMatch.date_time).label('year'),
+                extract('month', BCMatch.date_time).label('month'),
+                func.count(BCMatch.id).label('count')
+            ).filter(BCMatch.date_time.isnot(None)
+            ).group_by('year', 'month'
+            ).order_by('year', 'month').all()
+            result = [{'year': int(r.year), 'month': int(r.month), 'count': r.count} for r in data]
+            years = sorted(set(r['year'] for r in result))
+            return jsonify({'data': result, 'years': years})
+
+    @app.route('/api/bc/seasons')
+    def api_bc_seasons():
+        from src.database.models import BCSeason
+        with db.session() as session:
+            seasons = session.query(BCSeason).order_by(BCSeason.number.desc()).all()
+            return jsonify({'seasons': [{
+                'id': s.id, 'number': s.number, 'name': s.name
+            } for s in seasons]})
+
+    @app.route('/api/bc/matches')
+    def api_bc_matches():
+        from src.database.models import BCMatch, BCTeam
+        from sqlalchemy import or_
+
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        search = request.args.get('search', '').strip()
+        season = request.args.get('season', '', type=str)
+        division = request.args.get('division', '').strip()
+
+        with db.session() as session:
+            query = session.query(BCMatch)
+
+            if season:
+                from src.database.models import BCSeason
+                s = session.query(BCSeason).filter_by(number=int(season)).first()
+                if s:
+                    query = query.filter(BCMatch.season_id == s.id)
+
+            if division:
+                query = query.filter(BCMatch.division_name == division)
+
+            if search:
+                team_ids = session.query(BCTeam.id).filter(
+                    BCTeam.name.ilike(f'%{search}%')
+                ).subquery()
+                query = query.filter(or_(
+                    BCMatch.home_team_id.in_(team_ids),
+                    BCMatch.away_team_id.in_(team_ids)
+                ))
+
+            query = query.order_by(BCMatch.date_time.desc())
+            total = query.count()
+            matches = query.offset((page - 1) * per_page).limit(per_page).all()
+
+            result = []
+            for m in matches:
+                result.append({
+                    'id': m.id,
+                    'site_id': m.site_id,
+                    'date_time': m.date_time.isoformat() if m.date_time else None,
+                    'home_team': m.home_team.name if m.home_team else None,
+                    'away_team': m.away_team.name if m.away_team else None,
+                    'home_score': m.home_score,
+                    'away_score': m.away_score,
+                    'set_scores': m.set_scores,
+                    'division_name': m.division_name,
+                    'round_name': m.round_name,
+                    'tournament_type': m.tournament_type,
+                    'venue': m.venue,
+                    'status': m.status,
+                })
+
+        return jsonify({
+            'matches': result, 'total': total,
+            'page': page, 'per_page': per_page,
+            'pages': (total + per_page - 1) // per_page
+        })
+
+    @app.route('/api/bc/matches/<int:match_id>')
+    def api_bc_match_detail(match_id):
+        from src.database.models import BCMatch, BCSeason
+        with db.session() as session:
+            match = session.query(BCMatch).filter_by(id=match_id).first()
+            if not match:
+                return jsonify({'error': 'Match not found'}), 404
+
+            home_stats = []
+            away_stats = []
+            for ps in match.player_stats:
+                entry = {
+                    'player_id': ps.player.id,
+                    'player_name': ps.player.full_name,
+                    'jersey_number': ps.jersey_number,
+                    'points': ps.points,
+                    'attacks': ps.attacks,
+                    'serves': ps.serves,
+                    'blocks': ps.blocks,
+                }
+                if ps.team_id == match.home_team_id:
+                    home_stats.append(entry)
+                else:
+                    away_stats.append(entry)
+
+            best_players = [{
+                'player_id': bp.player_id,
+                'player_name': bp.player.full_name if bp.player else bp.player_name,
+                'points': bp.points, 'attacks': bp.attacks,
+                'serves': bp.serves, 'blocks': bp.blocks,
+            } for bp in match.best_players]
+
+            referees = [{
+                'id': mr.referee.id, 'full_name': mr.referee.full_name,
+            } for mr in match.referees]
+
+            season_num = 30
+            if match.season_id:
+                season = session.query(BCSeason).filter_by(id=match.season_id).first()
+                if season:
+                    season_num = season.number
+
+            result = {
+                'id': match.id, 'site_id': match.site_id, 'season_num': season_num,
+                'date_time': match.date_time.isoformat() if match.date_time else None,
+                'home_team': {'id': match.home_team.id, 'name': match.home_team.name} if match.home_team else None,
+                'away_team': {'id': match.away_team.id, 'name': match.away_team.name} if match.away_team else None,
+                'home_score': match.home_score, 'away_score': match.away_score,
+                'set_scores': match.set_scores,
+                'home_total_points': match.home_total_points,
+                'away_total_points': match.away_total_points,
+                'division_name': match.division_name, 'round_name': match.round_name,
+                'tournament_type': match.tournament_type, 'venue': match.venue,
+                'status': match.status,
+                'home_stats': home_stats, 'away_stats': away_stats,
+                'best_players': best_players, 'referees': referees,
+            }
+        return jsonify(result)
+
+    @app.route('/api/bc/teams')
+    def api_bc_teams():
+        from src.database.models import BCTeam, BCMatch
+        from sqlalchemy import func
+
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        search = request.args.get('search', '').strip()
+        sort = request.args.get('sort', 'name')
+
+        with db.session() as session:
+            home_sq = session.query(
+                BCMatch.home_team_id.label('tid'), func.count(BCMatch.id).label('cnt')
+            ).filter(BCMatch.home_team_id.isnot(None)).group_by(BCMatch.home_team_id).subquery()
+            away_sq = session.query(
+                BCMatch.away_team_id.label('tid'), func.count(BCMatch.id).label('cnt')
+            ).filter(BCMatch.away_team_id.isnot(None)).group_by(BCMatch.away_team_id).subquery()
+            home_wins = session.query(
+                BCMatch.home_team_id.label('tid'), func.count(BCMatch.id).label('cnt')
+            ).filter(BCMatch.home_team_id.isnot(None), BCMatch.home_score > BCMatch.away_score
+            ).group_by(BCMatch.home_team_id).subquery()
+            away_wins = session.query(
+                BCMatch.away_team_id.label('tid'), func.count(BCMatch.id).label('cnt')
+            ).filter(BCMatch.away_team_id.isnot(None), BCMatch.away_score > BCMatch.home_score
+            ).group_by(BCMatch.away_team_id).subquery()
+
+            mc_expr = func.coalesce(home_sq.c.cnt, 0) + func.coalesce(away_sq.c.cnt, 0)
+            wins_expr = func.coalesce(home_wins.c.cnt, 0) + func.coalesce(away_wins.c.cnt, 0)
+
+            query = session.query(BCTeam, mc_expr.label('mc'), wins_expr.label('wins')
+            ).outerjoin(home_sq, BCTeam.id == home_sq.c.tid
+            ).outerjoin(away_sq, BCTeam.id == away_sq.c.tid
+            ).outerjoin(home_wins, BCTeam.id == home_wins.c.tid
+            ).outerjoin(away_wins, BCTeam.id == away_wins.c.tid)
+
+            if search:
+                query = query.filter(BCTeam.name.ilike(f'%{search}%'))
+            if sort == 'matches':
+                query = query.order_by(mc_expr.desc())
+            elif sort == 'wins':
+                query = query.order_by(wins_expr.desc())
+            else:
+                query = query.order_by(BCTeam.name)
+
+            total = query.count()
+            rows = query.offset((page - 1) * per_page).limit(per_page).all()
+            result = []
+            for r in rows:
+                mc = r.mc; w = r.wins
+                result.append({
+                    'id': r.BCTeam.id, 'site_id': r.BCTeam.site_id,
+                    'name': r.BCTeam.name, 'is_women': r.BCTeam.is_women,
+                    'match_count': mc, 'wins': w, 'losses': mc - w,
+                    'win_rate': round(w / mc * 100, 1) if mc > 0 else 0,
+                })
+
+        return jsonify({'teams': result, 'total': total, 'page': page, 'per_page': per_page})
+
+    @app.route('/api/bc/teams/<int:team_id>')
+    def api_bc_team_detail(team_id):
+        from src.database.models import BCTeam, BCMatch, BCMatchPlayerStats, BCPlayer, BCSeason
+        from sqlalchemy import or_, func, distinct
+
+        with db.session() as session:
+            team = session.query(BCTeam).filter_by(id=team_id).first()
+            if not team:
+                return jsonify({'error': 'Team not found'}), 404
+
+            total = session.query(BCMatch).filter(or_(
+                BCMatch.home_team_id == team_id, BCMatch.away_team_id == team_id)).count()
+            wins = session.query(BCMatch).filter(or_(
+                (BCMatch.home_team_id == team_id) & (BCMatch.home_score > BCMatch.away_score),
+                (BCMatch.away_team_id == team_id) & (BCMatch.away_score > BCMatch.home_score))).count()
+
+            # Seasons the team played in
+            season_ids = session.query(distinct(BCMatch.season_id)).filter(
+                or_(BCMatch.home_team_id == team_id, BCMatch.away_team_id == team_id),
+                BCMatch.season_id.isnot(None)
+            ).all()
+            seasons_list = []
+            for (sid,) in season_ids:
+                s = session.query(BCSeason).filter_by(id=sid).first()
+                if s:
+                    seasons_list.append({'id': s.id, 'number': s.number, 'name': s.name})
+            seasons_list.sort(key=lambda x: x['number'], reverse=True)
+
+            players = session.query(
+                BCPlayer,
+                func.count(BCMatchPlayerStats.id).label('games'),
+                func.coalesce(func.sum(BCMatchPlayerStats.points), 0).label('points'),
+                func.coalesce(func.sum(BCMatchPlayerStats.attacks), 0).label('attacks'),
+                func.coalesce(func.sum(BCMatchPlayerStats.serves), 0).label('serves'),
+                func.coalesce(func.sum(BCMatchPlayerStats.blocks), 0).label('blocks'),
+            ).join(BCMatchPlayerStats, BCMatchPlayerStats.player_id == BCPlayer.id
+            ).filter(BCMatchPlayerStats.team_id == team_id
+            ).group_by(BCPlayer.id
+            ).order_by(func.sum(BCMatchPlayerStats.points).desc()).all()
+
+            recent = session.query(BCMatch).filter(or_(
+                BCMatch.home_team_id == team_id, BCMatch.away_team_id == team_id
+            )).order_by(BCMatch.date_time.desc()).limit(20).all()
+
+            result = {
+                'id': team.id, 'site_id': team.site_id, 'name': team.name,
+                'logo_url': team.logo_url,
+                'stats': {'total_matches': total, 'wins': wins, 'losses': total - wins,
+                          'win_rate': round(wins / total * 100, 1) if total > 0 else 0},
+                'seasons': seasons_list,
+                'roster': [{'id': p.BCPlayer.id, 'full_name': p.BCPlayer.full_name,
+                    'height': p.BCPlayer.height, 'match_count': p.games,
+                    'total_points': p.points, 'total_attacks': p.attacks,
+                    'total_serves': p.serves, 'total_blocks': p.blocks} for p in players],
+                'recent_matches': [{'id': m.id, 'site_id': m.site_id,
+                    'date_time': m.date_time.isoformat() if m.date_time else None,
+                    'opponent': m.away_team.name if m.home_team_id == team_id else (m.home_team.name if m.home_team else '?'),
+                    'score': f"{m.home_score}:{m.away_score}" if m.home_team_id == team_id else f"{m.away_score}:{m.home_score}",
+                    'is_win': (m.home_score > m.away_score) if m.home_team_id == team_id else (m.away_score > m.home_score) if m.away_score is not None else None,
+                } for m in recent if m.home_team and m.away_team],
+            }
+        return jsonify(result)
+
+    @app.route('/api/bc/players')
+    def api_bc_players():
+        from src.database.models import BCPlayer, BCMatchPlayerStats, BCBestPlayer
+        from sqlalchemy import func, or_
+
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 50, type=int)
+        search = request.args.get('search', '').strip()
+        sort = request.args.get('sort', 'mvp')
+
+        with db.session() as session:
+            stats_sq = session.query(
+                BCMatchPlayerStats.player_id,
+                func.count(BCMatchPlayerStats.id).label('games'),
+                func.coalesce(func.sum(BCMatchPlayerStats.points), 0).label('pts'),
+                func.coalesce(func.sum(BCMatchPlayerStats.attacks), 0).label('atk'),
+                func.coalesce(func.sum(BCMatchPlayerStats.serves), 0).label('srv'),
+                func.coalesce(func.sum(BCMatchPlayerStats.blocks), 0).label('blk'),
+            ).group_by(BCMatchPlayerStats.player_id).subquery()
+
+            mvp_sq = session.query(
+                BCBestPlayer.player_id,
+                func.count(BCBestPlayer.id).label('mvp')
+            ).filter(BCBestPlayer.player_id.isnot(None)
+            ).group_by(BCBestPlayer.player_id).subquery()
+
+            query = session.query(
+                BCPlayer, stats_sq.c.games, stats_sq.c.pts,
+                stats_sq.c.atk, stats_sq.c.srv, stats_sq.c.blk,
+                func.coalesce(mvp_sq.c.mvp, 0).label('mvp')
+            ).outerjoin(stats_sq, BCPlayer.id == stats_sq.c.player_id
+            ).outerjoin(mvp_sq, BCPlayer.id == mvp_sq.c.player_id)
+
+            if search:
+                query = query.filter(or_(
+                    BCPlayer.last_name.ilike(f'%{search}%'),
+                    BCPlayer.first_name.ilike(f'%{search}%')))
+
+            if sort == 'mvp':
+                query = query.order_by(func.coalesce(mvp_sq.c.mvp, 0).desc())
+            elif sort == 'points':
+                query = query.order_by(func.coalesce(stats_sq.c.pts, 0).desc())
+            elif sort == 'matches':
+                query = query.order_by(func.coalesce(stats_sq.c.games, 0).desc())
+            elif sort == 'attacks':
+                query = query.order_by(func.coalesce(stats_sq.c.atk, 0).desc())
+            elif sort == 'serves':
+                query = query.order_by(func.coalesce(stats_sq.c.srv, 0).desc())
+            elif sort == 'blocks':
+                query = query.order_by(func.coalesce(stats_sq.c.blk, 0).desc())
+            else:
+                query = query.order_by(BCPlayer.last_name)
+
+            total = query.count()
+            rows = query.offset((page - 1) * per_page).limit(per_page).all()
+            result = [{'id': r.BCPlayer.id, 'site_id': r.BCPlayer.site_id,
+                'full_name': r.BCPlayer.full_name,
+                'height': r.BCPlayer.height, 'weight': r.BCPlayer.weight,
+                'match_count': r.games or 0, 'total_points': r.pts or 0,
+                'total_attacks': r.atk or 0, 'total_serves': r.srv or 0, 'total_blocks': r.blk or 0,
+                'mvp_count': r.mvp,
+            } for r in rows]
+
+        return jsonify({'players': result, 'total': total, 'page': page, 'per_page': per_page})
+
+    @app.route('/api/bc/players/<int:player_id>')
+    def api_bc_player_detail(player_id):
+        from src.database.models import BCPlayer, BCMatchPlayerStats, BCMatch, BCBestPlayer, BCTeam
+        from sqlalchemy import func, distinct
+
+        with db.session() as session:
+            player = session.query(BCPlayer).filter_by(id=player_id).first()
+            if not player:
+                return jsonify({'error': 'Player not found'}), 404
+
+            stats = session.query(
+                func.count(BCMatchPlayerStats.id).label('games'),
+                func.coalesce(func.sum(BCMatchPlayerStats.points), 0).label('points'),
+                func.coalesce(func.sum(BCMatchPlayerStats.attacks), 0).label('attacks'),
+                func.coalesce(func.sum(BCMatchPlayerStats.serves), 0).label('serves'),
+                func.coalesce(func.sum(BCMatchPlayerStats.blocks), 0).label('blocks'),
+            ).filter(BCMatchPlayerStats.player_id == player_id).first()
+
+            best_count = session.query(BCBestPlayer).filter_by(player_id=player_id).count()
+
+            # Teams the player played for
+            team_ids = session.query(distinct(BCMatchPlayerStats.team_id)).filter(
+                BCMatchPlayerStats.player_id == player_id
+            ).all()
+            teams_list = []
+            for (tid,) in team_ids:
+                if tid:
+                    t = session.query(BCTeam).filter_by(id=tid).first()
+                    if t:
+                        teams_list.append({'id': t.id, 'name': t.name, 'site_id': t.site_id})
+
+            match_stats = session.query(BCMatchPlayerStats, BCMatch).join(
+                BCMatch, BCMatch.id == BCMatchPlayerStats.match_id
+            ).filter(BCMatchPlayerStats.player_id == player_id
+            ).order_by(BCMatch.date_time.desc()).all()
+
+            matches_list = []
+            for ps, m in match_stats:
+                is_home = ps.team_id == m.home_team_id
+                team_name = ''
+                if ps.team_id:
+                    for t in teams_list:
+                        if t['id'] == ps.team_id:
+                            team_name = t['name']; break
+                opponent = m.away_team.name if is_home and m.away_team else (m.home_team.name if m.home_team else '?')
+                matches_list.append({
+                    'match_id': m.id,
+                    'date_time': m.date_time.isoformat() if m.date_time else None,
+                    'team_name': team_name, 'opponent': opponent,
+                    'division': m.division_name, 'round': m.round_name,
+                    'points': ps.points, 'attacks': ps.attacks, 'serves': ps.serves, 'blocks': ps.blocks,
+                    'score': f"{m.home_score}:{m.away_score}" if is_home else f"{m.away_score}:{m.home_score}",
+                })
+
+            result = {
+                'id': player.id, 'site_id': player.site_id,
+                'full_name': player.full_name,
+                'first_name': player.first_name, 'last_name': player.last_name,
+                'height': player.height, 'weight': player.weight,
+                'birth_date': player.birth_date, 'position': player.position,
+                'photo_url': player.photo_url,
+                'stats': {'total_matches': stats.games, 'total_points': stats.points,
+                    'total_attacks': stats.attacks, 'total_serves': stats.serves,
+                    'total_blocks': stats.blocks, 'best_player_awards': best_count},
+                'teams': teams_list,
+                'matches': matches_list,
+            }
+        return jsonify(result)
+
+    @app.route('/api/bc/referees')
+    def api_bc_referees():
+        from src.database.models import BCReferee, BCMatchReferee
+        from sqlalchemy import func, or_
+
+        search = request.args.get('search', '').strip()
+        with db.session() as session:
+            mc_sq = session.query(
+                BCMatchReferee.referee_id, func.count(BCMatchReferee.id).label('mc')
+            ).group_by(BCMatchReferee.referee_id).subquery()
+            query = session.query(
+                BCReferee, func.coalesce(mc_sq.c.mc, 0).label('mc')
+            ).outerjoin(mc_sq, BCReferee.id == mc_sq.c.referee_id)
+            if search:
+                query = query.filter(or_(
+                    BCReferee.last_name.ilike(f'%{search}%'),
+                    BCReferee.first_name.ilike(f'%{search}%')))
+            rows = query.order_by(func.coalesce(mc_sq.c.mc, 0).desc()).all()
+            result = [{'id': r.BCReferee.id, 'full_name': r.BCReferee.full_name,
+                'match_count': r.mc} for r in rows]
+        return jsonify({'referees': result, 'total': len(result)})
+
+    @app.route('/api/bc/referees/<int:referee_id>')
+    def api_bc_referee_detail(referee_id):
+        from src.database.models import BCReferee, BCMatchReferee, BCMatch
+        with db.session() as session:
+            referee = session.query(BCReferee).filter_by(id=referee_id).first()
+            if not referee:
+                return jsonify({'error': 'Referee not found'}), 404
+            assignments = session.query(BCMatchReferee, BCMatch).join(
+                BCMatch, BCMatch.id == BCMatchReferee.match_id
+            ).filter(BCMatchReferee.referee_id == referee_id
+            ).order_by(BCMatch.date_time.desc()).all()
+            matches_list = [{'id': m.id, 'site_id': m.site_id,
+                'date_time': m.date_time.isoformat() if m.date_time else None,
+                'home_team': m.home_team.name if m.home_team else '?',
+                'away_team': m.away_team.name if m.away_team else '?',
+                'home_score': m.home_score, 'away_score': m.away_score,
+                'division': m.division_name, 'round': m.round_name,
+            } for mr, m in assignments]
+            result = {
+                'id': referee.id, 'full_name': referee.full_name,
+                'photo_url': referee.photo_url,
+                'stats': {'total_matches': len(matches_list)},
+                'matches': matches_list,
+            }
         return jsonify(result)

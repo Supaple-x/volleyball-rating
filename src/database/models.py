@@ -93,6 +93,7 @@ class Team(Base):
     site_id: Mapped[int] = mapped_column(Integer, unique=True)  # ID с сайта
     name: Mapped[str] = mapped_column(String(200))
     organization: Mapped[Optional[str]] = mapped_column(String(200))
+    gender: Mapped[Optional[str]] = mapped_column(String(10))  # "М" / "Ж" / null
 
     # Relationships
     home_matches: Mapped[List["Match"]] = relationship(
@@ -287,6 +288,245 @@ class TeamRoster(Base):
 
     def __repr__(self):
         return f"<TeamRoster team={self.team_id} player={self.player_id}>"
+
+
+# =============================================
+# Business Champions League (bc_*) models
+# =============================================
+
+class BCSeason(Base):
+    """Сезон BC (например, 'Осень 2025')."""
+    __tablename__ = "bc_seasons"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    number: Mapped[int] = mapped_column(Integer, unique=True)  # 1-30
+    name: Mapped[str] = mapped_column(String(100))  # "Осень 2025"
+
+    divisions: Mapped[List["BCDivision"]] = relationship(back_populates="season")
+    matches: Mapped[List["BCMatch"]] = relationship(back_populates="season")
+
+    def __repr__(self):
+        return f"<BCSeason {self.number}: {self.name}>"
+
+
+class BCDivision(Base):
+    """Дивизион BC (Бирюза, Кварц и т.д.)."""
+    __tablename__ = "bc_divisions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    season_id: Mapped[int] = mapped_column(ForeignKey("bc_seasons.id"))
+
+    season: Mapped["BCSeason"] = relationship(back_populates="divisions")
+    team_entries: Mapped[List["BCDivisionTeam"]] = relationship(back_populates="division")
+
+    __table_args__ = (
+        UniqueConstraint('name', 'season_id', name='unique_bc_division_season'),
+    )
+
+    def __repr__(self):
+        return f"<BCDivision {self.name}>"
+
+
+class BCTeam(Base):
+    """Команда BC."""
+    __tablename__ = "bc_teams"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int] = mapped_column(Integer, unique=True)
+    name: Mapped[str] = mapped_column(String(200))
+    logo_url: Mapped[Optional[str]] = mapped_column(String(500))
+    is_women: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    division_entries: Mapped[List["BCDivisionTeam"]] = relationship(back_populates="team")
+    home_matches: Mapped[List["BCMatch"]] = relationship(
+        back_populates="home_team", foreign_keys="BCMatch.home_team_id"
+    )
+    away_matches: Mapped[List["BCMatch"]] = relationship(
+        back_populates="away_team", foreign_keys="BCMatch.away_team_id"
+    )
+
+    def __repr__(self):
+        return f"<BCTeam {self.name}>"
+
+
+class BCDivisionTeam(Base):
+    """Привязка команды к дивизиону + standings."""
+    __tablename__ = "bc_division_teams"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    division_id: Mapped[int] = mapped_column(ForeignKey("bc_divisions.id"))
+    team_id: Mapped[int] = mapped_column(ForeignKey("bc_teams.id"))
+    games_played: Mapped[Optional[int]] = mapped_column(Integer)
+    wins: Mapped[Optional[int]] = mapped_column(Integer)
+    losses: Mapped[Optional[int]] = mapped_column(Integer)
+    points: Mapped[Optional[int]] = mapped_column(Integer)
+
+    division: Mapped["BCDivision"] = relationship(back_populates="team_entries")
+    team: Mapped["BCTeam"] = relationship(back_populates="division_entries")
+
+    __table_args__ = (
+        UniqueConstraint('division_id', 'team_id', name='unique_bc_division_team'),
+    )
+
+    def __repr__(self):
+        return f"<BCDivisionTeam div={self.division_id} team={self.team_id}>"
+
+
+class BCPlayer(Base):
+    """Игрок BC."""
+    __tablename__ = "bc_players"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int] = mapped_column(Integer, unique=True)
+    last_name: Mapped[str] = mapped_column(String(100))
+    first_name: Mapped[str] = mapped_column(String(100))
+    birth_date: Mapped[Optional[str]] = mapped_column(String(10))  # "20.06.2004"
+    height: Mapped[Optional[int]] = mapped_column(Integer)
+    weight: Mapped[Optional[int]] = mapped_column(Integer)
+    position: Mapped[Optional[str]] = mapped_column(String(50))
+    photo_url: Mapped[Optional[str]] = mapped_column(String(500))
+
+    match_stats: Mapped[List["BCMatchPlayerStats"]] = relationship(back_populates="player")
+    best_player_awards: Mapped[List["BCBestPlayer"]] = relationship(back_populates="player")
+
+    @property
+    def full_name(self) -> str:
+        return f"{self.last_name} {self.first_name}"
+
+    def __repr__(self):
+        return f"<BCPlayer {self.full_name}>"
+
+
+class BCReferee(Base):
+    """Судья BC."""
+    __tablename__ = "bc_referees"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int] = mapped_column(Integer, unique=True)
+    last_name: Mapped[str] = mapped_column(String(100))
+    first_name: Mapped[str] = mapped_column(String(100))
+    photo_url: Mapped[Optional[str]] = mapped_column(String(500))
+
+    match_assignments: Mapped[List["BCMatchReferee"]] = relationship(back_populates="referee")
+
+    @property
+    def full_name(self) -> str:
+        return f"{self.last_name} {self.first_name}"
+
+    def __repr__(self):
+        return f"<BCReferee {self.full_name}>"
+
+
+class BCMatch(Base):
+    """Матч BC."""
+    __tablename__ = "bc_matches"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int] = mapped_column(Integer, unique=True)
+    season_id: Mapped[int] = mapped_column(ForeignKey("bc_seasons.id"))
+
+    date_time: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    venue: Mapped[Optional[str]] = mapped_column(String(200))
+
+    division_name: Mapped[Optional[str]] = mapped_column(String(100))
+    round_name: Mapped[Optional[str]] = mapped_column(String(50))
+    tournament_type: Mapped[Optional[str]] = mapped_column(String(20))  # "championship" / "cup"
+
+    home_team_id: Mapped[Optional[int]] = mapped_column(ForeignKey("bc_teams.id"))
+    away_team_id: Mapped[Optional[int]] = mapped_column(ForeignKey("bc_teams.id"))
+
+    home_score: Mapped[Optional[int]] = mapped_column(Integer)
+    away_score: Mapped[Optional[int]] = mapped_column(Integer)
+    set_scores: Mapped[Optional[str]] = mapped_column(String(200))
+    home_total_points: Mapped[Optional[int]] = mapped_column(Integer)
+    away_total_points: Mapped[Optional[int]] = mapped_column(Integer)
+
+    status: Mapped[str] = mapped_column(String(50), default="unknown")
+    parsed_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+
+    season: Mapped["BCSeason"] = relationship(back_populates="matches")
+    home_team: Mapped[Optional["BCTeam"]] = relationship(
+        back_populates="home_matches", foreign_keys=[home_team_id]
+    )
+    away_team: Mapped[Optional["BCTeam"]] = relationship(
+        back_populates="away_matches", foreign_keys=[away_team_id]
+    )
+    player_stats: Mapped[List["BCMatchPlayerStats"]] = relationship(back_populates="match")
+    best_players: Mapped[List["BCBestPlayer"]] = relationship(back_populates="match")
+    referees: Mapped[List["BCMatchReferee"]] = relationship(back_populates="match")
+
+    def __repr__(self):
+        return f"<BCMatch {self.site_id}>"
+
+
+class BCMatchPlayerStats(Base):
+    """Статистика игрока в матче BC."""
+    __tablename__ = "bc_match_player_stats"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("bc_matches.id"))
+    player_id: Mapped[int] = mapped_column(ForeignKey("bc_players.id"))
+    team_id: Mapped[int] = mapped_column(ForeignKey("bc_teams.id"))
+
+    jersey_number: Mapped[Optional[int]] = mapped_column(Integer)
+    points: Mapped[Optional[int]] = mapped_column(Integer)
+    attacks: Mapped[Optional[int]] = mapped_column(Integer)
+    serves: Mapped[Optional[int]] = mapped_column(Integer)
+    blocks: Mapped[Optional[int]] = mapped_column(Integer)
+
+    match: Mapped["BCMatch"] = relationship(back_populates="player_stats")
+    player: Mapped["BCPlayer"] = relationship(back_populates="match_stats")
+    team: Mapped["BCTeam"] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint('match_id', 'player_id', name='unique_bc_match_player'),
+    )
+
+    def __repr__(self):
+        return f"<BCMatchPlayerStats match={self.match_id} player={self.player_id}>"
+
+
+class BCBestPlayer(Base):
+    """Лучший игрок матча BC."""
+    __tablename__ = "bc_best_players"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("bc_matches.id"))
+    player_id: Mapped[Optional[int]] = mapped_column(ForeignKey("bc_players.id"), nullable=True)
+    team_id: Mapped[Optional[int]] = mapped_column(ForeignKey("bc_teams.id"), nullable=True)
+    player_name: Mapped[Optional[str]] = mapped_column(String(200))
+
+    points: Mapped[Optional[int]] = mapped_column(Integer)
+    attacks: Mapped[Optional[int]] = mapped_column(Integer)
+    serves: Mapped[Optional[int]] = mapped_column(Integer)
+    blocks: Mapped[Optional[int]] = mapped_column(Integer)
+
+    match: Mapped["BCMatch"] = relationship(back_populates="best_players")
+    player: Mapped[Optional["BCPlayer"]] = relationship(back_populates="best_player_awards")
+    team: Mapped[Optional["BCTeam"]] = relationship()
+
+    def __repr__(self):
+        return f"<BCBestPlayer match={self.match_id}>"
+
+
+class BCMatchReferee(Base):
+    """Связь матч-судья BC (many-to-many)."""
+    __tablename__ = "bc_match_referees"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("bc_matches.id"))
+    referee_id: Mapped[int] = mapped_column(ForeignKey("bc_referees.id"))
+
+    match: Mapped["BCMatch"] = relationship(back_populates="referees")
+    referee: Mapped["BCReferee"] = relationship(back_populates="match_assignments")
+
+    __table_args__ = (
+        UniqueConstraint('match_id', 'referee_id', name='unique_bc_match_referee'),
+    )
+
+    def __repr__(self):
+        return f"<BCMatchReferee match={self.match_id} referee={self.referee_id}>"
 
 
 class ParsingJob(Base):

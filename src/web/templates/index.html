@@ -38,6 +38,9 @@ body { font-family: 'Inter', sans-serif; }
 .page.active { display: block; }
 .ref-tooltip { display: none; position: absolute; z-index: 40; pointer-events: none; }
 tr:hover .ref-tooltip { display: block; }
+#photo-overlay { display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.85); align-items:center; justify-content:center; cursor:pointer; }
+#photo-overlay.active { display:flex; }
+#photo-overlay img { max-width:90vw; max-height:85vh; border-radius:12px; box-shadow:0 25px 50px rgba(0,0,0,0.5); object-fit:contain; }
 </style>
 </head>
 <body class="bg-bg-dark text-white h-screen overflow-hidden flex font-display antialiased">
@@ -50,31 +53,65 @@ tr:hover .ref-tooltip { display: block; }
         </div>
         <h1 class="text-lg font-bold tracking-tight text-white">VolleyMSK</h1>
     </div>
-    <nav class="flex-1 px-4 py-6 flex flex-col gap-1 overflow-y-auto" id="nav">
-        <a href="#" data-page="dashboard" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl transition-all group">
-            <span class="material-symbols-outlined">dashboard</span>
-            <span class="text-sm font-medium">Dashboard</span>
-        </a>
-        <a href="#" data-page="matches" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl transition-all group">
-            <span class="material-symbols-outlined">sports_volleyball</span>
-            <span class="text-sm font-medium">Матчи</span>
-        </a>
-        <a href="#" data-page="teams" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl transition-all group">
-            <span class="material-symbols-outlined">groups</span>
-            <span class="text-sm font-medium">Команды</span>
-        </a>
-        <a href="#" data-page="players" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl transition-all group">
-            <span class="material-symbols-outlined">person</span>
-            <span class="text-sm font-medium">Игроки</span>
-        </a>
-        <a href="#" data-page="referees" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl transition-all group">
-            <span class="material-symbols-outlined">sports</span>
-            <span class="text-sm font-medium">Судьи</span>
-        </a>
-        <a href="#" data-page="parsing" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl transition-all group">
-            <span class="material-symbols-outlined">database</span>
-            <span class="text-sm font-medium">Парсинг</span>
-        </a>
+    <div class="px-4 pt-4 pb-2">
+        <div class="flex rounded-lg overflow-hidden border border-white/10 bg-bg-dark">
+            <button onclick="switchSource('volleymsk')" id="src-volleymsk" class="flex-1 px-3 py-2 text-xs font-bold bg-primary text-white text-center transition">VolleyMSK</button>
+            <button onclick="switchSource('bc')" id="src-bc" class="flex-1 px-3 py-2 text-xs font-bold bg-transparent text-slate-400 hover:bg-white/5 text-center transition">Champions</button>
+        </div>
+    </div>
+    <nav class="flex-1 px-4 py-2 flex flex-col gap-1 overflow-y-auto" id="nav">
+        <div id="vmsk-nav-items" class="flex flex-col gap-1">
+            <a href="#" data-page="dashboard" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl transition-all group">
+                <span class="material-symbols-outlined">dashboard</span>
+                <span class="text-sm font-medium">Dashboard</span>
+            </a>
+            <a href="#" data-page="matches" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl transition-all group">
+                <span class="material-symbols-outlined">sports_volleyball</span>
+                <span class="text-sm font-medium">Матчи</span>
+            </a>
+            <a href="#" data-page="teams" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl transition-all group">
+                <span class="material-symbols-outlined">groups</span>
+                <span class="text-sm font-medium">Команды</span>
+            </a>
+            <a href="#" data-page="players" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl transition-all group">
+                <span class="material-symbols-outlined">person</span>
+                <span class="text-sm font-medium">Игроки</span>
+            </a>
+            <a href="#" data-page="referees" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl transition-all group">
+                <span class="material-symbols-outlined">sports</span>
+                <span class="text-sm font-medium">Судьи</span>
+            </a>
+            <a href="#" data-page="parsing" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl transition-all group">
+                <span class="material-symbols-outlined">database</span>
+                <span class="text-sm font-medium">Парсинг</span>
+            </a>
+        </div>
+        <div id="bc-nav-items" class="flex flex-col gap-1" style="display:none;">
+            <a href="#" data-page="bc-dashboard" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl transition-all group">
+                <span class="material-symbols-outlined">dashboard</span>
+                <span class="text-sm font-medium">Dashboard</span>
+            </a>
+            <a href="#" data-page="bc-matches" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl transition-all group">
+                <span class="material-symbols-outlined">sports_volleyball</span>
+                <span class="text-sm font-medium">Матчи</span>
+            </a>
+            <a href="#" data-page="bc-teams" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl transition-all group">
+                <span class="material-symbols-outlined">groups</span>
+                <span class="text-sm font-medium">Команды</span>
+            </a>
+            <a href="#" data-page="bc-players" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl transition-all group">
+                <span class="material-symbols-outlined">person</span>
+                <span class="text-sm font-medium">Игроки</span>
+            </a>
+            <a href="#" data-page="bc-referees" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl transition-all group">
+                <span class="material-symbols-outlined">sports</span>
+                <span class="text-sm font-medium">Судьи</span>
+            </a>
+            <a href="#" data-page="bc-parsing" class="nav-item flex items-center gap-3 px-4 py-3 rounded-xl transition-all group">
+                <span class="material-symbols-outlined">database</span>
+                <span class="text-sm font-medium">Парсинг</span>
+            </a>
+        </div>
     </nav>
 </aside>
 
@@ -149,19 +186,65 @@ tr:hover .ref-tooltip { display: block; }
 <div id="page-teams" class="page">
     <div class="flex justify-between items-start mb-6">
         <div><h1 class="text-2xl font-bold">Команды</h1><p class="text-sm text-slate-400 mt-1">Все команды лиги</p></div>
-        <input type="text" id="teams-search" placeholder="Поиск команды..." class="bg-input-bg border-0 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-primary w-64"/>
+        <div class="flex items-center gap-3">
+            <div class="flex rounded-lg overflow-hidden border border-white/10">
+                <button onclick="setTeamsGender('')" id="teams-gender-all" class="px-3 py-2 text-xs font-medium bg-primary text-white">Все</button>
+                <button onclick="setTeamsGender('\u041C')" id="teams-gender-m" class="px-3 py-2 text-xs font-medium bg-white/5 text-slate-400 hover:bg-white/10">Мужские</button>
+                <button onclick="setTeamsGender('\u0416')" id="teams-gender-f" class="px-3 py-2 text-xs font-medium bg-white/5 text-slate-400 hover:bg-white/10">Женские</button>
+            </div>
+            <input type="text" id="teams-search" placeholder="Поиск команды..." class="bg-input-bg border-0 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-primary w-64"/>
+        </div>
     </div>
-    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6" id="teams-grid"></div>
+    <div class="bg-surface rounded-2xl shadow-lg border border-white/5 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-white/5 text-slate-400 uppercase text-xs tracking-wider">
+                    <tr>
+                        <th class="px-4 py-4 w-16">#</th>
+                        <th class="px-4 py-4 cursor-pointer hover:text-white" onclick="setTeamsSort('name')">Команда <span id="teams-sort-name" class="text-primary"></span></th>
+                        <th class="px-4 py-4 text-center cursor-pointer hover:text-white" onclick="setTeamsSort('matches')">Матчей <span id="teams-sort-matches"></span></th>
+                        <th class="px-4 py-4 text-center cursor-pointer hover:text-white" onclick="setTeamsSort('wins')">Побед <span id="teams-sort-wins"></span></th>
+                        <th class="px-4 py-4 text-center">Поражений</th>
+                        <th class="px-4 py-4 text-center cursor-pointer hover:text-white" onclick="setTeamsSort('win_rate')">Винрейт <span id="teams-sort-win_rate"></span></th>
+                    </tr>
+                </thead>
+                <tbody id="teams-tbody" class="divide-y divide-white/5 text-slate-300"></tbody>
+            </table>
+        </div>
+    </div>
+    <div class="flex justify-between items-center mt-4" id="teams-pagination"></div>
 </div>
 
 <!-- ==================== PLAYERS ==================== -->
 <div id="page-players" class="page">
     <div class="flex justify-between items-start mb-6">
         <div><h1 class="text-2xl font-bold">Игроки</h1><p class="text-sm text-slate-400 mt-1">База игроков</p></div>
-        <input type="text" id="players-search" placeholder="Поиск игрока..." class="bg-input-bg border-0 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-primary w-64"/>
+        <div class="flex items-center gap-3">
+            <div class="flex rounded-lg overflow-hidden border border-white/10">
+                <button onclick="setPlayersGender('')" id="players-gender-all" class="px-3 py-2 text-xs font-medium bg-primary text-white">Все</button>
+                <button onclick="setPlayersGender('\u041C')" id="players-gender-m" class="px-3 py-2 text-xs font-medium bg-white/5 text-slate-400 hover:bg-white/10">Мужчины</button>
+                <button onclick="setPlayersGender('\u0416')" id="players-gender-f" class="px-3 py-2 text-xs font-medium bg-white/5 text-slate-400 hover:bg-white/10">Женщины</button>
+            </div>
+            <input type="text" id="players-search" placeholder="Поиск игрока..." class="bg-input-bg border-0 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-primary w-64"/>
+        </div>
     </div>
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" id="players-grid"></div>
-    <div class="flex justify-center mt-6" id="players-pagination"></div>
+    <div class="bg-surface rounded-2xl shadow-lg border border-white/5 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-white/5 text-slate-400 uppercase text-xs tracking-wider">
+                    <tr>
+                        <th class="px-4 py-4 w-16">#</th>
+                        <th class="px-4 py-4 cursor-pointer hover:text-white" onclick="setPlayersSort('name')">Игрок <span id="players-sort-name"></span></th>
+                        <th class="px-4 py-4 text-center">Рост</th>
+                        <th class="px-4 py-4 text-center cursor-pointer hover:text-white" onclick="setPlayersSort('matches')">Матчей <span id="players-sort-matches"></span></th>
+                        <th class="px-4 py-4 text-center cursor-pointer hover:text-white" onclick="setPlayersSort('mvp')">MVP <span id="players-sort-mvp" class="text-primary"></span></th>
+                    </tr>
+                </thead>
+                <tbody id="players-tbody" class="divide-y divide-white/5 text-slate-300"></tbody>
+            </table>
+        </div>
+    </div>
+    <div class="flex justify-between items-center mt-4" id="players-pagination"></div>
 </div>
 
 <!-- ==================== REFEREES ==================== -->
@@ -250,6 +333,202 @@ tr:hover .ref-tooltip { display: block; }
     </div>
 </div>
 
+<!-- ==================== BC DASHBOARD ==================== -->
+<div id="page-bc-dashboard" class="page">
+    <div class="grid grid-cols-4 gap-6 mb-6" id="bc-kpi-cards"></div>
+    <div class="flex gap-6 mb-6">
+        <div class="w-[60%] bg-surface rounded-2xl p-6 shadow-lg border border-white/5">
+            <div class="flex justify-between items-center mb-4">
+                <div><h2 class="text-lg font-bold text-white">Динамика матчей</h2><p class="text-xs text-slate-400 mt-1">Количество игр по месяцам</p></div>
+                <div id="bc-chart-year-btns" class="flex gap-1 flex-wrap justify-end"></div>
+            </div>
+            <div class="h-[250px] relative" id="bc-chart-container">
+                <svg id="bc-chart-svg" class="w-full h-full"></svg>
+                <div id="bc-chart-tooltip" class="fixed z-50 bg-bg-dark border border-white/10 rounded-lg px-3 py-2 text-xs pointer-events-none shadow-xl" style="display:none;"></div>
+            </div>
+            <div id="bc-chart-x-labels" class="flex justify-between mt-2 px-2 text-xs text-slate-500 font-medium"></div>
+        </div>
+        <div class="w-[40%] bg-surface rounded-2xl p-6 shadow-lg border border-white/5 flex flex-col items-center">
+            <div class="w-full mb-2"><h2 class="text-lg font-bold text-white">Статистика базы</h2><p class="text-xs text-slate-400 mt-1">Общие показатели</p></div>
+            <div class="flex-1 flex items-center justify-center w-full" id="bc-db-stats-circle"></div>
+        </div>
+    </div>
+    <div class="grid grid-cols-2 gap-6">
+        <div class="bg-surface rounded-2xl shadow-lg border border-white/5 overflow-hidden">
+            <div class="p-6 border-b border-white/5"><h2 class="text-lg font-bold text-white">Топ игроков</h2><p class="text-xs text-slate-400 mt-1">По количеству очков</p></div>
+            <div id="bc-top-players-table"></div>
+        </div>
+        <div class="bg-surface rounded-2xl shadow-lg border border-white/5 overflow-hidden">
+            <div class="p-6 border-b border-white/5"><h2 class="text-lg font-bold text-white">Топ судей</h2><p class="text-xs text-slate-400 mt-1">По количеству матчей</p></div>
+            <div id="bc-top-referees-table"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ==================== BC MATCHES ==================== -->
+<div id="page-bc-matches" class="page">
+    <div class="flex justify-between items-start mb-6">
+        <div><h1 class="text-2xl font-bold">Матчи BC</h1><p class="text-sm text-slate-400 mt-1">Лига Чемпионов Бизнеса</p></div>
+        <div class="flex items-center gap-3">
+            <select id="bc-matches-season" class="bg-input-bg border-0 rounded-xl px-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-primary" onchange="loadBcMatches(1)">
+                <option value="">Все сезоны</option>
+            </select>
+            <input type="text" id="bc-match-search" placeholder="Поиск по команде..." class="bg-input-bg border-0 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-primary w-64"/>
+        </div>
+    </div>
+    <div class="bg-surface rounded-2xl shadow-lg border border-white/5 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm">
+                <thead class="bg-white/5 text-slate-400 uppercase text-xs tracking-wider">
+                    <tr><th class="px-4 py-4">Дата</th><th class="px-4 py-4">Дивизион</th><th class="px-4 py-4">Тур</th><th class="px-4 py-4">Хозяева</th><th class="px-4 py-4 text-center w-24">Счёт</th><th class="px-4 py-4">Гости</th><th class="px-4 py-4">Площадка</th></tr>
+                </thead>
+                <tbody id="bc-matches-tbody" class="divide-y divide-white/5 text-slate-300"></tbody>
+            </table>
+        </div>
+    </div>
+    <div class="flex justify-between items-center mt-4" id="bc-matches-pagination"></div>
+</div>
+
+<!-- ==================== BC TEAMS ==================== -->
+<div id="page-bc-teams" class="page">
+    <div class="flex justify-between items-start mb-6">
+        <div><h1 class="text-2xl font-bold">Команды BC</h1><p class="text-sm text-slate-400 mt-1">Лига Чемпионов Бизнеса</p></div>
+        <div class="flex items-center gap-3">
+            <select id="bc-teams-season" class="bg-input-bg border-0 rounded-xl px-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-primary" onchange="loadBcTeams(1)">
+                <option value="">Все сезоны</option>
+            </select>
+            <input type="text" id="bc-teams-search" placeholder="Поиск команды..." class="bg-input-bg border-0 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-primary w-64"/>
+        </div>
+    </div>
+    <div class="bg-surface rounded-2xl shadow-lg border border-white/5 overflow-hidden">
+        <table class="w-full text-left text-sm">
+            <thead class="bg-white/5 text-slate-400 uppercase text-xs tracking-wider">
+                <tr><th class="px-4 py-4 w-16">#</th><th class="px-4 py-4">Команда</th><th class="px-4 py-4 text-center">Матчей</th><th class="px-4 py-4 text-center">Побед</th><th class="px-4 py-4 text-center">Поражений</th><th class="px-4 py-4 text-center">Очков</th></tr>
+            </thead>
+            <tbody id="bc-teams-tbody" class="divide-y divide-white/5 text-slate-300"></tbody>
+        </table>
+    </div>
+    <div class="flex justify-between items-center mt-4" id="bc-teams-pagination"></div>
+</div>
+
+<!-- ==================== BC PLAYERS ==================== -->
+<div id="page-bc-players" class="page">
+    <div class="flex justify-between items-start mb-6">
+        <div><h1 class="text-2xl font-bold">Игроки BC</h1><p class="text-sm text-slate-400 mt-1">Лига Чемпионов Бизнеса</p></div>
+        <input type="text" id="bc-players-search" placeholder="Поиск игрока..." class="bg-input-bg border-0 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-primary w-64"/>
+    </div>
+    <div class="bg-surface rounded-2xl shadow-lg border border-white/5 overflow-hidden">
+        <table class="w-full text-left text-sm">
+            <thead class="bg-white/5 text-slate-400 uppercase text-xs tracking-wider">
+                <tr>
+                    <th class="px-4 py-4 w-16">#</th>
+                    <th class="px-4 py-4">Игрок</th>
+                    <th class="px-4 py-4 text-center cursor-pointer hover:text-white" onclick="setBcPlayersSort('matches')">Матчей <span id="bc-players-sort-matches"></span></th>
+                    <th class="px-4 py-4 text-center cursor-pointer hover:text-white" onclick="setBcPlayersSort('mvp')">MVP <span id="bc-players-sort-mvp" class="text-primary"></span></th>
+                    <th class="px-4 py-4 text-center cursor-pointer hover:text-white" onclick="setBcPlayersSort('points')">Очков <span id="bc-players-sort-points"></span></th>
+                    <th class="px-4 py-4 text-center cursor-pointer hover:text-white" onclick="setBcPlayersSort('attacks')">Атак <span id="bc-players-sort-attacks"></span></th>
+                    <th class="px-4 py-4 text-center cursor-pointer hover:text-white" onclick="setBcPlayersSort('serves')">Подач <span id="bc-players-sort-serves"></span></th>
+                    <th class="px-4 py-4 text-center cursor-pointer hover:text-white" onclick="setBcPlayersSort('blocks')">Блоков <span id="bc-players-sort-blocks"></span></th>
+                </tr>
+            </thead>
+            <tbody id="bc-players-tbody" class="divide-y divide-white/5 text-slate-300"></tbody>
+        </table>
+    </div>
+    <div class="flex justify-between items-center mt-4" id="bc-players-pagination"></div>
+</div>
+
+<!-- ==================== BC REFEREES ==================== -->
+<div id="page-bc-referees" class="page">
+    <div class="flex justify-between items-start mb-6">
+        <div><h1 class="text-2xl font-bold">Судьи BC</h1><p class="text-sm text-slate-400 mt-1">Лига Чемпионов Бизнеса</p></div>
+        <input type="text" id="bc-referees-search" placeholder="Поиск судьи..." class="bg-input-bg border-0 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:ring-2 focus:ring-primary w-64"/>
+    </div>
+    <div class="bg-surface rounded-2xl shadow-lg border border-white/5 overflow-hidden">
+        <table class="w-full text-left text-sm">
+            <thead class="bg-white/5 text-slate-400 uppercase text-xs tracking-wider">
+                <tr><th class="px-6 py-4 w-16">#</th><th class="px-6 py-4">Судья</th><th class="px-6 py-4 text-center">Матчей</th></tr>
+            </thead>
+            <tbody id="bc-referees-tbody" class="divide-y divide-white/5 text-slate-300"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- ==================== BC PARSING ==================== -->
+<div id="page-bc-parsing" class="page">
+    <div class="mb-6"><h1 class="text-2xl font-bold">Парсинг BC</h1><p class="text-sm text-slate-400 mt-1">Импорт данных с volleyball.businesschampions.ru</p></div>
+    <div class="grid grid-cols-2 gap-6 mb-6">
+        <div class="bg-surface p-6 rounded-2xl border border-white/5">
+            <h3 class="text-lg font-bold mb-4">Настройки</h3>
+            <div class="grid grid-cols-2 gap-4 mb-4">
+                <label class="flex flex-col gap-2">
+                    <span class="text-xs font-medium uppercase tracking-wide text-slate-400">Сезон</span>
+                    <select id="bc-parse-season" class="bg-input-bg border-0 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-primary"></select>
+                </label>
+                <div class="flex items-end">
+                    <label class="flex items-center gap-3 pb-3">
+                        <input type="checkbox" id="bc-parse-skip" checked class="rounded bg-input-bg border-slate-600 text-primary focus:ring-primary"/>
+                        <span class="text-sm">Пропускать существующие</span>
+                    </label>
+                </div>
+            </div>
+            <div class="flex flex-col gap-3">
+                <button id="btn-bc-full-season" class="w-full bg-gradient-to-r from-primary to-indigo-600 text-white font-bold py-3.5 px-6 rounded-lg shadow-lg shadow-primary/25 flex items-center justify-center gap-2 hover:opacity-90 transition">
+                    <span class="material-symbols-outlined text-[20px]">play_arrow</span> Парсить весь сезон
+                </button>
+                <button id="btn-bc-all-seasons" class="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-3.5 px-6 rounded-lg shadow-lg shadow-purple-500/25 flex items-center justify-center gap-2 hover:opacity-90 transition">
+                    <span class="material-symbols-outlined text-[20px]">fast_forward</span> Парсить все сезоны (1-30)
+                </button>
+            </div>
+        </div>
+        <div class="bg-surface p-6 rounded-2xl border border-white/5">
+            <h3 class="text-lg font-bold mb-4">Парсинг по сущностям</h3>
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <button id="btn-bc-schedule" class="bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 hover:bg-cyan-500/20 transition">
+                    <span class="material-symbols-outlined text-[18px]">calendar_month</span> Расписание
+                </button>
+                <button id="btn-bc-parse-matches" class="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 hover:bg-emerald-500/20 transition">
+                    <span class="material-symbols-outlined text-[18px]">scoreboard</span> Матчи
+                </button>
+                <button id="btn-bc-players" class="bg-amber-500/10 border border-amber-500/20 text-amber-400 font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 hover:bg-amber-500/20 transition">
+                    <span class="material-symbols-outlined text-[18px]">person</span> Игроки
+                </button>
+                <button id="btn-bc-referees" class="bg-orange-500/10 border border-orange-500/20 text-orange-400 font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 hover:bg-orange-500/20 transition">
+                    <span class="material-symbols-outlined text-[18px]">sports</span> Судьи
+                </button>
+            </div>
+            <div class="flex gap-2" id="bc-parse-controls" style="display:none;">
+                <button id="btn-bc-pause" class="flex-1 px-4 py-2.5 rounded-lg border border-amber-500/30 text-amber-400 text-sm font-medium hover:bg-amber-500/10 transition flex items-center justify-center gap-1">
+                    <span class="material-symbols-outlined text-[16px]">pause</span> Пауза
+                </button>
+                <button id="btn-bc-resume" class="flex-1 px-4 py-2.5 rounded-lg border border-emerald-500/30 text-emerald-400 text-sm font-medium hover:bg-emerald-500/10 transition flex items-center justify-center gap-1" style="display:none;">
+                    <span class="material-symbols-outlined text-[16px]">play_arrow</span> Продолжить
+                </button>
+                <button id="btn-bc-stop" class="flex-1 px-4 py-2.5 rounded-lg border border-red-500/30 text-red-400 text-sm font-medium hover:bg-red-500/10 transition flex items-center justify-center gap-1">
+                    <span class="material-symbols-outlined text-[16px]">stop</span> Остановить
+                </button>
+            </div>
+        </div>
+    </div>
+    <div id="bc-progress-section" class="bg-surface rounded-2xl border border-white/5 p-6 mb-6" style="display:none;">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-3">
+                <div id="bc-status-badge" class="flex gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                    <span class="relative flex h-2.5 w-2.5 my-auto"><span class="pulse-dot absolute h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span></span>
+                    <span id="bc-status-text" class="text-xs font-bold text-emerald-500 uppercase">Выполняется</span>
+                </div>
+                <span class="text-sm text-slate-400">Сезон: <span id="bc-progress-season" class="text-white font-medium">-</span></span>
+                <span id="bc-all-seasons-info" class="text-sm text-slate-400" style="display:none;">| Сезон <span id="bc-all-seasons-current" class="text-white font-medium">0</span> из <span id="bc-all-seasons-total" class="text-white font-medium">0</span></span>
+            </div>
+        </div>
+        <div class="space-y-3" id="bc-progress-bars"></div>
+        <div id="bc-last-error" class="mt-3 text-xs text-red-400/80 truncate"></div>
+    </div>
+    <div class="bg-surface rounded-2xl border border-white/5 p-6">
+        <h3 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">База данных BC</h3>
+        <div class="grid grid-cols-5 gap-4" id="bc-parse-db-stats"></div>
+    </div>
+</div>
+
 <!-- ==================== DETAIL MODAL ==================== -->
 <div id="detail-modal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
     <div class="bg-surface rounded-2xl border border-white/5 shadow-2xl w-[90%] max-w-[800px] max-h-[85vh] overflow-y-auto p-8">
@@ -259,6 +538,11 @@ tr:hover .ref-tooltip { display: block; }
         </div>
         <div id="modal-content"></div>
     </div>
+</div>
+
+<!-- Photo overlay -->
+<div id="photo-overlay" onclick="this.classList.remove('active')">
+    <img id="photo-overlay-img" src="" alt=""/>
 </div>
 
 </div>
@@ -271,7 +555,7 @@ async function apiPost(url, data = {}) {
 }
 
 let currentPage = 'dashboard';
-const pageLoaders = { dashboard: loadDashboard, matches: loadMatches, teams: loadTeams, players: loadPlayers, referees: loadReferees, parsing: loadParsing };
+const pageLoaders = { dashboard: loadDashboard, matches: loadMatches, teams: loadTeams, players: loadPlayers, referees: loadReferees, parsing: loadParsing, 'bc-dashboard': loadBcDashboard, 'bc-matches': loadBcMatches, 'bc-teams': loadBcTeams, 'bc-players': loadBcPlayers, 'bc-referees': loadBcReferees, 'bc-parsing': loadBcParsing };
 
 document.querySelectorAll('.nav-item').forEach(el => {
     el.addEventListener('click', e => { e.preventDefault(); navigateTo(el.dataset.page); });
@@ -432,33 +716,61 @@ async function loadMatches(page = 1) {
     document.getElementById('matches-pagination').innerHTML = `<span class="text-sm text-slate-400">Показано ${(page-1)*20+1}-${Math.min(page*20, data.total)} из ${data.total}</span><div class="flex gap-1">${page > 1 ? `<button onclick="loadMatches(${page-1})" class="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 text-sm">Назад</button>` : ''}${[...Array(Math.min(7, tp))].map((_, i) => { let p = i + 1; if (tp > 7) { if (page <= 4) p = i + 1; else if (page >= tp - 3) p = tp - 6 + i; else p = page - 3 + i; } return `<button onclick="loadMatches(${p})" class="px-3 py-1.5 rounded-lg text-sm ${p === page ? 'bg-primary text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'}">${p}</button>`; }).join('')}${page < tp ? `<button onclick="loadMatches(${page+1})" class="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 text-sm">Далее</button>` : ''}</div>`;
 }
 
-async function loadTeams() {
+let teamsPage = 1, teamsSort = 'name', teamsGender = '';
+function setTeamsSort(s) { teamsSort = s; loadTeams(1); }
+function setTeamsGender(g) {
+    teamsGender = g;
+    ['all','m','f'].forEach(k => {
+        const btn = document.getElementById('teams-gender-' + k);
+        const active = (k === 'all' && g === '') || (k === 'm' && g === '\u041C') || (k === 'f' && g === '\u0416');
+        btn.className = active ? 'px-3 py-2 text-xs font-medium bg-primary text-white' : 'px-3 py-2 text-xs font-medium bg-white/5 text-slate-400 hover:bg-white/10';
+    });
+    loadTeams(1);
+}
+async function loadTeams(page = 1) {
+    teamsPage = page;
     const search = document.getElementById('teams-search')?.value || '';
-    const data = await api(search ? `/api/teams?search=${encodeURIComponent(search)}` : '/api/teams');
-    document.getElementById('teams-grid').innerHTML = data.teams.map(t => `
-        <article class="group bg-surface rounded-2xl p-6 border border-white/5 hover:border-primary/50 hover:-translate-y-1 transition-all cursor-pointer" onclick="showTeamDetail(${t.id})">
-            <div class="flex items-center gap-4 mb-4"><div class="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary"><span class="material-symbols-outlined text-2xl">groups</span></div><div><h3 class="font-bold text-lg text-white">${t.name}</h3><p class="text-sm text-slate-500">ID: ${t.site_id}</p></div></div>
-            <div class="text-xs text-slate-400">Нажмите для подробностей</div>
-        </article>
-    `).join('');
+    let url = `/api/teams?page=${page}&per_page=50&sort=${teamsSort}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    if (teamsGender) url += `&gender=${encodeURIComponent(teamsGender)}`;
+    const data = await api(url);
+    const offset = (page - 1) * 50;
+    document.getElementById('teams-tbody').innerHTML = data.teams.map((t, i) => {
+        const wrColor = t.win_rate >= 60 ? 'text-emerald-400' : t.win_rate >= 40 ? 'text-amber-400' : t.match_count > 0 ? 'text-red-400' : 'text-slate-500';
+        const gBadge = t.gender === '\u041C' ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 ml-2">М</span>' : t.gender === '\u0416' ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-pink-500/10 text-pink-400 ml-2">Ж</span>' : '';
+        return `<tr class="hover:bg-white/5 transition-colors cursor-pointer" onclick="showTeamDetail(${t.id})"><td class="px-4 py-3 text-slate-500 text-xs">${offset + i + 1}</td><td class="px-4 py-3"><div class="flex items-center gap-3"><div class="size-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary"><span class="material-symbols-outlined text-sm">groups</span></div><span class="font-semibold text-white">${t.name}</span>${gBadge}</div></td><td class="px-4 py-3 text-center font-medium">${t.match_count}</td><td class="px-4 py-3 text-center text-emerald-400 font-medium">${t.wins}</td><td class="px-4 py-3 text-center text-red-400 font-medium">${t.losses}</td><td class="px-4 py-3 text-center ${wrColor} font-bold">${t.match_count > 0 ? t.win_rate + '%' : '-'}</td></tr>`;
+    }).join('');
+    ['name','matches','wins','win_rate'].forEach(s => { const el = document.getElementById('teams-sort-' + s); if (el) el.textContent = teamsSort === s ? '\u25BC' : ''; });
+    const tp = Math.ceil(data.total / 50);
+    document.getElementById('teams-pagination').innerHTML = data.total > 50 ? `<span class="text-sm text-slate-400">Показано ${offset + 1}-${Math.min(offset + 50, data.total)} из ${data.total}</span><div class="flex gap-1">${page > 1 ? `<button onclick="loadTeams(${page-1})" class="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 text-sm">Назад</button>` : ''}${[...Array(Math.min(7, tp))].map((_, i) => { let p = i + 1; if (tp > 7) { if (page <= 4) p = i + 1; else if (page >= tp - 3) p = tp - 6 + i; else p = page - 3 + i; } return `<button onclick="loadTeams(${p})" class="px-3 py-1.5 rounded-lg text-sm ${p === page ? 'bg-primary text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'}">${p}</button>`; }).join('')}${page < tp ? `<button onclick="loadTeams(${page+1})" class="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 text-sm">Далее</button>` : ''}</div>` : `<span class="text-sm text-slate-400">${data.total} команд</span><div></div>`;
 }
 
-let playersPage = 1;
+let playersPage = 1, playersSort = 'mvp', playersGender = '';
+function setPlayersSort(s) { playersSort = s; loadPlayers(1); }
+function setPlayersGender(g) {
+    playersGender = g;
+    ['all','m','f'].forEach(k => {
+        const btn = document.getElementById('players-gender-' + k);
+        const active = (k === 'all' && g === '') || (k === 'm' && g === '\u041C') || (k === 'f' && g === '\u0416');
+        btn.className = active ? 'px-3 py-2 text-xs font-medium bg-primary text-white' : 'px-3 py-2 text-xs font-medium bg-white/5 text-slate-400 hover:bg-white/10';
+    });
+    loadPlayers(1);
+}
 async function loadPlayers(page = 1) {
     playersPage = page;
     const search = document.getElementById('players-search')?.value || '';
-    let url = `/api/players?page=${page}&per_page=20`; if (search) url += `&search=${encodeURIComponent(search)}`;
+    let url = `/api/players?page=${page}&per_page=50&sort=${playersSort}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    if (playersGender) url += `&gender=${encodeURIComponent(playersGender)}`;
     const data = await api(url);
-    document.getElementById('players-grid').innerHTML = data.players.map(p => `
-        <div class="group bg-surface rounded-2xl p-5 border border-white/5 hover:border-primary/50 hover:-translate-y-1 transition-all cursor-pointer" onclick="showPlayerDetail(${p.id})">
-            <div class="w-16 h-16 rounded-full bg-slate-700 flex items-center justify-center text-xl font-bold text-slate-400 border-2 border-white/10 mb-4">${p.full_name.split(' ').map(n => n[0]).join('').slice(0, 2)}</div>
-            <h3 class="text-lg font-bold text-white mb-0.5">${p.full_name}</h3>
-            <p class="text-sm text-slate-500 mb-4">${p.position || ''} ${p.birth_year ? '(' + p.birth_year + ')' : ''}</p>
-            <div class="grid grid-cols-3 gap-2 pt-3 border-t border-white/5 text-center"><div><div class="text-xs text-slate-500 mb-1">Рост</div><div class="text-sm font-bold text-white">${p.height || '-'}</div></div><div><div class="text-xs text-slate-500 mb-1">Матчей</div><div class="text-sm font-bold text-white">${p.match_count || 0}</div></div><div><div class="text-xs text-slate-500 mb-1">MVP</div><div class="text-sm font-bold text-amber-400">${p.mvp_count || 0}</div></div></div>
-        </div>
-    `).join('');
-    const tp = Math.ceil(data.total / 20);
-    document.getElementById('players-pagination').innerHTML = `<div class="flex gap-1 items-center">${page > 1 ? `<button onclick="loadPlayers(${page-1})" class="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 text-sm">Назад</button>` : ''}<span class="text-sm text-slate-400 mx-3">Стр. ${page} из ${tp}</span>${page < tp ? `<button onclick="loadPlayers(${page+1})" class="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 text-sm">Далее</button>` : ''}</div>`;
+    const offset = (page - 1) * 50;
+    document.getElementById('players-tbody').innerHTML = data.players.map((p, i) => {
+        const ini = p.full_name.split(' ').map(n => n[0]).join('').slice(0, 2);
+        return `<tr class="hover:bg-white/5 transition-colors cursor-pointer" onclick="showPlayerDetail(${p.id})"><td class="px-4 py-3 text-slate-500 text-xs">${offset + i + 1}</td><td class="px-4 py-3"><div class="flex items-center gap-3"><div class="size-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-300">${ini}</div><div><span class="font-semibold text-white">${p.full_name}</span><span class="text-xs text-slate-500 ml-2">${p.position || ''}</span></div></div></td><td class="px-4 py-3 text-center text-slate-400">${p.height || '-'}</td><td class="px-4 py-3 text-center font-medium">${p.match_count || 0}</td><td class="px-4 py-3 text-center font-bold text-amber-400">${p.mvp_count || 0}</td></tr>`;
+    }).join('');
+    ['name','matches','mvp'].forEach(s => { const el = document.getElementById('players-sort-' + s); if (el) el.textContent = playersSort === s ? '\u25BC' : ''; });
+    const tp = Math.ceil(data.total / 50);
+    document.getElementById('players-pagination').innerHTML = `<span class="text-sm text-slate-400">Показано ${offset + 1}-${Math.min(offset + 50, data.total)} из ${data.total}</span><div class="flex gap-1">${page > 1 ? `<button onclick="loadPlayers(${page-1})" class="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 text-sm">Назад</button>` : ''}${[...Array(Math.min(7, tp))].map((_, i) => { let p = i + 1; if (tp > 7) { if (page <= 4) p = i + 1; else if (page >= tp - 3) p = tp - 6 + i; else p = page - 3 + i; } return `<button onclick="loadPlayers(${p})" class="px-3 py-1.5 rounded-lg text-sm ${p === page ? 'bg-primary text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'}">${p}</button>`; }).join('')}${page < tp ? `<button onclick="loadPlayers(${page+1})" class="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 text-sm">Далее</button>` : ''}</div>`;
 }
 
 // Referee tooltip cache
@@ -580,7 +892,7 @@ async function showMatchDetail(id) {
         ${d.home_roster?.length ? `<h3 class="font-bold mb-2 mt-4">${d.home_team?.name || 'Хозяева'}</h3><div class="flex flex-wrap gap-2 mb-4">${d.home_roster.map(p => `<span class="px-3 py-1 rounded-lg bg-white/5 text-sm cursor-pointer hover:bg-primary/20 transition" onclick="showPlayerDetail(${p.id})">${p.full_name}</span>`).join('')}</div>` : ''}
         ${d.away_roster?.length ? `<h3 class="font-bold mb-2">${d.away_team?.name || 'Гости'}</h3><div class="flex flex-wrap gap-2 mb-4">${d.away_roster.map(p => `<span class="px-3 py-1 rounded-lg bg-white/5 text-sm cursor-pointer hover:bg-primary/20 transition" onclick="showPlayerDetail(${p.id})">${p.full_name}</span>`).join('')}</div>` : ''}
         ${d.best_players?.length ? `<h3 class="font-bold mb-2 mt-4">Лучшие игроки</h3><div class="flex flex-wrap gap-2">${d.best_players.map(bp => `<span class="px-3 py-1 rounded-lg bg-amber-500/10 text-amber-400 text-sm"><span class="material-symbols-outlined text-[14px] align-middle" style="font-variation-settings:'FILL' 1">star</span> ${bp.player_name} (${bp.team || ''})</span>`).join('')}</div>` : ''}
-        <div class="mt-6 pt-4 border-t border-white/5 flex justify-end"><a href="https://volleymsk.ru/match.php?id=${d.site_id}" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-primary transition"><span class="material-symbols-outlined text-sm">open_in_new</span>Источник на volleymsk.ru</a></div>`;
+        <div class="mt-6 pt-4 border-t border-white/5 flex justify-end"><a href="https://volleymsk.ru/ap/match.php?match_id=${d.site_id}" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-primary transition"><span class="material-symbols-outlined text-sm">open_in_new</span>Источник на volleymsk.ru</a></div>`;
     document.getElementById('detail-modal').style.display = 'flex';
 }
 
@@ -589,7 +901,7 @@ async function showPlayerDetail(id) {
     document.getElementById('modal-title').textContent = d.full_name;
     document.getElementById('modal-content').innerHTML = `
         <div class="flex gap-6 mb-6">
-            ${d.photo_url ? `<img src="${d.photo_url}" class="w-24 h-24 rounded-full object-cover border-2 border-white/10"/>` : `<div class="w-24 h-24 rounded-full bg-slate-700 flex items-center justify-center text-3xl font-bold text-slate-400 border-2 border-white/10">${d.full_name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>`}
+            ${d.photo_url ? `<img src="${d.photo_url}" class="w-24 h-24 rounded-full object-cover border-2 border-white/10 cursor-pointer hover:border-primary/50 transition-colors" onclick="event.stopPropagation();showPhoto('${d.photo_url}')"/>` : `<div class="w-24 h-24 rounded-full bg-slate-700 flex items-center justify-center text-3xl font-bold text-slate-400 border-2 border-white/10">${d.full_name.split(' ').map(n=>n[0]).join('').slice(0,2)}</div>`}
             <div><p class="text-xl font-bold text-white">${d.full_name}</p><div class="flex gap-4 mt-2 text-sm text-slate-400">${d.birth_year ? `<span>Год: ${d.birth_year}</span>` : ''}${d.height ? `<span>Рост: ${d.height} см</span>` : ''}${d.position ? `<span>${d.position}</span>` : ''}</div>${d.teams?.length ? `<div class="flex gap-2 mt-3">${d.teams.map(t => `<span class="px-2 py-1 rounded-lg bg-primary/10 text-primary text-xs font-medium cursor-pointer" onclick="showTeamDetail(${t.id})">${t.name}</span>`).join('')}</div>` : ''}</div>
         </div>
         <div class="grid grid-cols-5 gap-4 mb-6">
@@ -676,9 +988,349 @@ document.getElementById('btn-stop').addEventListener('click', () => apiPost('/ap
 let searchTimeout = null;
 function setupSearch(id, fn) { const el = document.getElementById(id); if (el) el.addEventListener('input', () => { clearTimeout(searchTimeout); searchTimeout = setTimeout(fn, 300); }); }
 setupSearch('match-search', () => loadMatches(1));
-setupSearch('teams-search', loadTeams);
+setupSearch('teams-search', () => loadTeams(1));
 setupSearch('players-search', () => loadPlayers(1));
 setupSearch('referees-search', loadReferees);
+setupSearch('bc-match-search', () => loadBcMatches(1));
+setupSearch('bc-teams-search', () => loadBcTeams(1));
+setupSearch('bc-players-search', () => loadBcPlayers(1));
+setupSearch('bc-referees-search', loadBcReferees);
+
+// ========== SOURCE SWITCHING ==========
+let currentSource = 'volleymsk';
+function switchSource(source) {
+    currentSource = source;
+    document.getElementById('src-volleymsk').className = source === 'volleymsk'
+        ? 'flex-1 px-3 py-2 text-xs font-bold bg-primary text-white text-center transition'
+        : 'flex-1 px-3 py-2 text-xs font-bold bg-transparent text-slate-400 hover:bg-white/5 text-center transition';
+    document.getElementById('src-bc').className = source === 'bc'
+        ? 'flex-1 px-3 py-2 text-xs font-bold bg-primary text-white text-center transition'
+        : 'flex-1 px-3 py-2 text-xs font-bold bg-transparent text-slate-400 hover:bg-white/5 text-center transition';
+    document.getElementById('vmsk-nav-items').style.display = source === 'volleymsk' ? 'flex' : 'none';
+    document.getElementById('bc-nav-items').style.display = source === 'bc' ? 'flex' : 'none';
+    navigateTo(source === 'bc' ? 'bc-dashboard' : 'dashboard');
+}
+
+// ========== BC DASHBOARD ==========
+let bcChartData = null, bcChartYear = 'all';
+async function loadBcDashboard() {
+    try {
+        const stats = await api('/api/bc/stats');
+        const kpis = [
+            { icon: 'event', label: 'Сезоны', value: stats.seasons || 0, bg: 'bg-primary/10', text: 'text-primary' },
+            { icon: 'sports_volleyball', label: 'Матчи', value: stats.matches || 0, bg: 'bg-cyan-400/10', text: 'text-cyan-400' },
+            { icon: 'groups', label: 'Команды', value: stats.teams || 0, bg: 'bg-purple-500/10', text: 'text-purple-500' },
+            { icon: 'person', label: 'Игроки', value: stats.players || 0, bg: 'bg-amber-400/10', text: 'text-amber-400' },
+        ];
+        document.getElementById('bc-kpi-cards').innerHTML = kpis.map(k => `
+            <div class="bg-surface rounded-2xl p-6 shadow-lg border border-white/5 flex flex-col justify-between h-36 relative overflow-hidden group">
+                <div class="${k.bg} ${k.text} p-2 rounded-lg w-fit"><span class="material-symbols-outlined text-2xl">${k.icon}</span></div>
+                <div><p class="text-slate-400 text-sm font-medium mb-1">${k.label}</p><p class="text-3xl font-bold text-white tracking-tight">${(k.value || 0).toLocaleString()}</p></div>
+            </div>`).join('');
+        document.getElementById('bc-db-stats-circle').innerHTML = `<div class="grid grid-cols-2 gap-4 w-full">${kpis.map(k => `<div class="text-center p-4 bg-bg-dark rounded-xl"><span class="material-symbols-outlined ${k.text} text-2xl mb-2">${k.icon}</span><p class="text-2xl font-bold text-white">${(k.value||0).toLocaleString()}</p><p class="text-xs text-slate-400 mt-1">${k.label}</p></div>`).join('')}</div>`;
+    } catch(e) {}
+    loadBcChart();
+    try {
+        const pData = await api('/api/bc/players?per_page=10&sort=points');
+        document.getElementById('bc-top-players-table').innerHTML = (pData.players || []).length ? `<table class="w-full text-sm"><thead class="bg-white/5 text-slate-400 uppercase text-xs tracking-wider"><tr><th class="px-6 py-3">#</th><th class="px-6 py-3">Игрок</th><th class="px-6 py-3 text-center">Матчей</th><th class="px-6 py-3 text-right">Очков</th></tr></thead><tbody class="divide-y divide-white/5">${pData.players.map((p, i) => `<tr class="hover:bg-white/5 transition-colors cursor-pointer" onclick="showBcPlayerDetail(${p.id})"><td class="px-6 py-3 font-bold ${i < 3 ? 'text-amber-400' : 'text-slate-500'}">${i+1}</td><td class="px-6 py-3 font-semibold text-white">${p.full_name}</td><td class="px-6 py-3 text-center text-slate-400">${p.match_count || 0}</td><td class="px-6 py-3 text-right font-bold text-cyan-400">${p.total_points || 0}</td></tr>`).join('')}</tbody></table>` : '<p class="text-sm text-slate-500 p-4">Нет данных. Запустите парсинг.</p>';
+    } catch(e) { document.getElementById('bc-top-players-table').innerHTML = '<p class="text-sm text-slate-500 p-4">Нет данных</p>'; }
+    try {
+        const rData = await api('/api/bc/referees');
+        document.getElementById('bc-top-referees-table').innerHTML = (rData.referees || []).length ? `<table class="w-full text-sm"><thead class="bg-white/5 text-slate-400 uppercase text-xs tracking-wider"><tr><th class="px-6 py-3">#</th><th class="px-6 py-3">Судья</th><th class="px-6 py-3 text-right">Матчей</th></tr></thead><tbody class="divide-y divide-white/5">${rData.referees.slice(0,10).map((r, i) => `<tr class="hover:bg-white/5 transition-colors cursor-pointer" onclick="showBcRefereeDetail(${r.id})"><td class="px-6 py-3 font-bold ${i < 3 ? 'text-amber-400' : 'text-slate-500'}">${i+1}</td><td class="px-6 py-3"><div class="flex items-center gap-3"><div class="size-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-300">${(r.full_name||'').split(' ').map(n=>n[0]).join('').slice(0,2)}</div><span class="font-semibold text-white">${r.full_name}</span></div></td><td class="px-6 py-3 text-right font-medium">${r.match_count}</td></tr>`).join('')}</tbody></table>` : '<p class="text-sm text-slate-500 p-4">Нет данных</p>';
+    } catch(e) { document.getElementById('bc-top-referees-table').innerHTML = '<p class="text-sm text-slate-500 p-4">Нет данных</p>'; }
+}
+async function loadBcChart() {
+    if (!bcChartData) { try { bcChartData = await api('/api/bc/stats/monthly'); } catch(e) { return; } }
+    const years = bcChartData.years || [];
+    const monthNames = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+    document.getElementById('bc-chart-year-btns').innerHTML = `<button onclick="setBcChartYear('all')" class="px-2.5 py-1 rounded-lg text-xs font-medium ${bcChartYear === 'all' ? 'bg-primary text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'} transition">Все</button>` + years.map(y => `<button onclick="setBcChartYear(${y})" class="px-2.5 py-1 rounded-lg text-xs font-medium ${bcChartYear === y ? 'bg-primary text-white' : 'bg-white/5 text-slate-400 hover:bg-white/10'} transition">${y}</button>`).join('');
+    let points;
+    if (bcChartYear === 'all') {
+        points = (bcChartData.data||[]).map(d => ({ label: `${monthNames[d.month-1]} ${d.year}`, count: d.count, month: d.month, year: d.year }));
+    } else {
+        points = [];
+        for (let m = 1; m <= 12; m++) { const f = (bcChartData.data||[]).find(d => d.year === bcChartYear && d.month === m); points.push({ label: monthNames[m-1], count: f ? f.count : 0, month: m, year: bcChartYear }); }
+    }
+    if (!points.length) return;
+    renderBcChart(points);
+}
+function setBcChartYear(y) { bcChartYear = y; loadBcChart(); }
+function renderBcChart(points) {
+    const svg = document.getElementById('bc-chart-svg');
+    const container = document.getElementById('bc-chart-container');
+    const W = container.clientWidth, H = 250;
+    const pad = { top: 20, right: 10, bottom: 5, left: 40 };
+    const cw = W - pad.left - pad.right, ch = H - pad.top - pad.bottom;
+    const maxVal = Math.max(...points.map(p => p.count), 1);
+    const gridMax = Math.ceil(maxVal / 50) * 50 || 50;
+    const xStep = cw / Math.max(points.length - 1, 1);
+    const coords = points.map((p, i) => ({ x: pad.left + i * xStep, y: pad.top + ch - (p.count / gridMax) * ch, ...p }));
+    let svgContent = `<defs><linearGradient id="bcAreaGrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#6366f1" stop-opacity="0.3"/><stop offset="100%" stop-color="#6366f1" stop-opacity="0"/></linearGradient></defs>`;
+    for (let i = 0; i <= 4; i++) { const yy = pad.top + ch - (i / 4) * ch; svgContent += `<line x1="${pad.left}" x2="${W-pad.right}" y1="${yy}" y2="${yy}" stroke="#94a3b8" stroke-dasharray="4 4" opacity="0.1"/><text x="${pad.left-6}" y="${yy+4}" fill="#64748b" font-size="10" text-anchor="end">${Math.round(gridMax*i/4)}</text>`; }
+    if (coords.length > 1) { const lp = coords.map(c => `${c.x},${c.y}`).join(' L'); svgContent += `<path d="M${coords[0].x},${coords[0].y} L${lp} L${coords[coords.length-1].x},${pad.top+ch} L${coords[0].x},${pad.top+ch} Z" fill="url(#bcAreaGrad)"/><path d="M${lp}" fill="none" stroke="#6366f1" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"/>`; }
+    coords.forEach((c, i) => { svgContent += `<circle cx="${c.x}" cy="${c.y}" r="3.5" fill="#6366f1" stroke="#1a1d28" stroke-width="2" opacity="0"/><rect x="${c.x-xStep/2}" y="${pad.top}" width="${xStep}" height="${ch}" fill="transparent" class="bc-chart-hover" data-idx="${i}"/>`; });
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('preserveAspectRatio', 'none'); svg.innerHTML = svgContent;
+    const labelsEl = document.getElementById('bc-chart-x-labels');
+    if (bcChartYear !== 'all' || points.length <= 24) { const step = points.length > 12 ? Math.ceil(points.length / 12) : 1; labelsEl.innerHTML = points.filter((_,i) => i%step===0).map(p => `<span>${p.label}</span>`).join(''); }
+    else { labelsEl.innerHTML = [...new Set(points.map(p => p.year))].map(y => `<span>${y}</span>`).join(''); }
+    const tooltip = document.getElementById('bc-chart-tooltip'), circles = svg.querySelectorAll('circle');
+    svg.querySelectorAll('.bc-chart-hover').forEach(rect => {
+        rect.addEventListener('mouseenter', e => { const idx = +e.target.dataset.idx; const c = coords[idx]; circles[idx].setAttribute('opacity','1'); const sr = svg.getBoundingClientRect(); tooltip.innerHTML = `<span class="text-white font-bold">${c.count}</span> <span class="text-slate-400">матчей</span><br><span class="text-slate-500">${c.label}</span>`; tooltip.style.display = 'block'; tooltip.style.left = (sr.left+(c.x/W)*sr.width-40)+'px'; tooltip.style.top = (sr.top+(c.y/H)*sr.height-52)+'px'; });
+        rect.addEventListener('mouseleave', e => { circles[+e.target.dataset.idx].setAttribute('opacity','0'); tooltip.style.display = 'none'; });
+    });
+}
+
+// ========== BC MATCHES ==========
+let bcSeasonsCache = null;
+async function populateBcSeasonSelect(selectId) {
+    const sel = document.getElementById(selectId);
+    if (!sel || sel.options.length > 1) return;
+    if (!bcSeasonsCache) { try { bcSeasonsCache = await api('/api/bc/seasons'); } catch(e) { return; } }
+    (bcSeasonsCache.seasons || []).forEach(s => { const opt = document.createElement('option'); opt.value = s.id; opt.textContent = s.name; sel.appendChild(opt); });
+}
+
+let bcMatchesPage = 1;
+async function loadBcMatches(page = 1) {
+    bcMatchesPage = page;
+    await populateBcSeasonSelect('bc-matches-season');
+    const season = document.getElementById('bc-matches-season')?.value || '';
+    const search = document.getElementById('bc-match-search')?.value || '';
+    let url = `/api/bc/matches?page=${page}&per_page=20`;
+    if (season) url += `&season=${season}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    const data = await api(url);
+    document.getElementById('bc-matches-tbody').innerHTML = (data.matches || []).map(m => {
+        const hw = m.home_score > m.away_score;
+        return `<tr class="hover:bg-white/5 transition-colors cursor-pointer" onclick="showBcMatchDetail(${m.id})"><td class="px-4 py-3 text-slate-400 text-xs">${m.date_time ? new Date(m.date_time).toLocaleDateString('ru') : '-'}</td><td class="px-4 py-3 text-slate-500 text-xs">${m.division_name || '-'}</td><td class="px-4 py-3 text-slate-500 text-xs">${m.round_name || '-'}</td><td class="px-4 py-3 ${hw ? 'text-white font-bold' : 'text-slate-400'}">${m.home_team || '-'}</td><td class="px-4 py-3 text-center"><span class="${hw ? 'text-emerald-400' : 'text-red-400'} font-bold text-lg">${m.home_score ?? '-'}</span><span class="text-slate-500 mx-1">:</span><span class="${!hw ? 'text-emerald-400' : 'text-red-400'} font-bold text-lg">${m.away_score ?? '-'}</span></td><td class="px-4 py-3 ${!hw ? 'text-white font-bold' : 'text-slate-400'}">${m.away_team || '-'}</td><td class="px-4 py-3 text-slate-500 text-xs">${m.venue || '-'}</td></tr>`;
+    }).join('');
+    const tp = data.pages || 1;
+    document.getElementById('bc-matches-pagination').innerHTML = (data.total || 0) > 20 ? `<span class="text-sm text-slate-400">Показано ${(page-1)*20+1}-${Math.min(page*20, data.total)} из ${data.total}</span><div class="flex gap-1">${page > 1 ? `<button onclick="loadBcMatches(${page-1})" class="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 text-sm">Назад</button>` : ''}${[...Array(Math.min(7, tp))].map((_,i)=>{let p=i+1;if(tp>7){if(page<=4)p=i+1;else if(page>=tp-3)p=tp-6+i;else p=page-3+i;}return `<button onclick="loadBcMatches(${p})" class="px-3 py-1.5 rounded-lg text-sm ${p===page?'bg-primary text-white':'bg-white/5 text-slate-400 hover:bg-white/10'}">${p}</button>`;}).join('')}${page<tp?`<button onclick="loadBcMatches(${page+1})" class="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 text-sm">Далее</button>`:''}</div>` : `<span class="text-sm text-slate-400">${data.total || 0} матчей</span><div></div>`;
+}
+
+// ========== BC TEAMS ==========
+let bcTeamsPage = 1;
+async function loadBcTeams(page = 1) {
+    bcTeamsPage = page;
+    await populateBcSeasonSelect('bc-teams-season');
+    const season = document.getElementById('bc-teams-season')?.value || '';
+    const search = document.getElementById('bc-teams-search')?.value || '';
+    let url = `/api/bc/teams?page=${page}&per_page=50`;
+    if (season) url += `&season=${season}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    const data = await api(url);
+    const offset = (page - 1) * 50;
+    document.getElementById('bc-teams-tbody').innerHTML = (data.teams || []).map((t, i) => {
+        const wBadge = t.is_women ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-pink-500/10 text-pink-400 ml-2">Ж</span>' : '';
+        return `<tr class="hover:bg-white/5 transition-colors cursor-pointer" onclick="showBcTeamDetail(${t.id})"><td class="px-4 py-3 text-slate-500 text-xs">${offset+i+1}</td><td class="px-4 py-3"><div class="flex items-center gap-3"><div class="size-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary"><span class="material-symbols-outlined text-sm">groups</span></div><span class="font-semibold text-white">${t.name}</span>${wBadge}</div></td><td class="px-4 py-3 text-center font-medium">${t.match_count || 0}</td><td class="px-4 py-3 text-center text-emerald-400 font-medium">${t.wins || 0}</td><td class="px-4 py-3 text-center text-red-400 font-medium">${t.losses || 0}</td><td class="px-4 py-3 text-center text-primary font-bold">${t.points || 0}</td></tr>`;
+    }).join('');
+    const tp = Math.ceil((data.total || 0) / 50);
+    document.getElementById('bc-teams-pagination').innerHTML = (data.total || 0) > 50 ? `<span class="text-sm text-slate-400">${offset+1}-${Math.min(offset+50,data.total)} из ${data.total}</span><div class="flex gap-1">${page>1?`<button onclick="loadBcTeams(${page-1})" class="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 text-sm">Назад</button>`:''}${page<tp?`<button onclick="loadBcTeams(${page+1})" class="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 text-sm">Далее</button>`:''}</div>` : `<span class="text-sm text-slate-400">${data.total || 0} команд</span><div></div>`;
+}
+
+// ========== BC PLAYERS ==========
+let bcPlayersPage = 1, bcPlayersSort = 'mvp';
+function setBcPlayersSort(s) { bcPlayersSort = s; loadBcPlayers(1); }
+async function loadBcPlayers(page = 1) {
+    bcPlayersPage = page;
+    const search = document.getElementById('bc-players-search')?.value || '';
+    let url = `/api/bc/players?page=${page}&per_page=50&sort=${bcPlayersSort}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
+    const data = await api(url);
+    const offset = (page - 1) * 50;
+    document.getElementById('bc-players-tbody').innerHTML = (data.players || []).map((p, i) => {
+        return `<tr class="hover:bg-white/5 transition-colors cursor-pointer" onclick="showBcPlayerDetail(${p.id})"><td class="px-4 py-3 text-slate-500 text-xs">${offset+i+1}</td><td class="px-4 py-3"><div class="flex items-center gap-3"><div class="size-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-300">${(p.full_name||'').split(' ').map(n=>n[0]).join('').slice(0,2)}</div><span class="font-semibold text-white">${p.full_name}</span></div></td><td class="px-4 py-3 text-center text-slate-400">${p.match_count || 0}</td><td class="px-4 py-3 text-center font-bold text-amber-400">${p.mvp_count || 0}</td><td class="px-4 py-3 text-center font-bold text-cyan-400">${p.total_points || 0}</td><td class="px-4 py-3 text-center text-slate-400">${p.total_attacks || 0}</td><td class="px-4 py-3 text-center text-slate-400">${p.total_serves || 0}</td><td class="px-4 py-3 text-center text-slate-400">${p.total_blocks || 0}</td></tr>`;
+    }).join('');
+    ['mvp','matches','points','attacks','serves','blocks'].forEach(s => { const el = document.getElementById('bc-players-sort-'+s); if(el) el.textContent = bcPlayersSort === s ? '\u25BC' : ''; });
+    const tp = Math.ceil((data.total || 0) / 50);
+    document.getElementById('bc-players-pagination').innerHTML = `<span class="text-sm text-slate-400">Показано ${offset+1}-${Math.min(offset+50,data.total||0)} из ${data.total||0}</span><div class="flex gap-1">${page>1?`<button onclick="loadBcPlayers(${page-1})" class="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 text-sm">Назад</button>`:''}${page<tp?`<button onclick="loadBcPlayers(${page+1})" class="px-3 py-1.5 rounded-lg bg-white/5 text-slate-400 hover:bg-white/10 text-sm">Далее</button>`:''}</div>`;
+}
+
+// ========== BC REFEREES ==========
+async function loadBcReferees() {
+    const search = document.getElementById('bc-referees-search')?.value || '';
+    const data = await api(search ? `/api/bc/referees?search=${encodeURIComponent(search)}` : '/api/bc/referees');
+    document.getElementById('bc-referees-tbody').innerHTML = (data.referees || []).map((r, i) => {
+        const ini = (r.full_name||'').split(' ').map(n=>n[0]).join('').slice(0,2);
+        return `<tr class="hover:bg-white/5 transition-colors cursor-pointer" onclick="showBcRefereeDetail(${r.id})"><td class="px-6 py-4 font-bold text-slate-500">${i+1}</td><td class="px-6 py-4"><div class="flex items-center gap-3"><div class="size-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-300">${ini}</div><span class="font-semibold text-white">${r.full_name}</span></div></td><td class="px-6 py-4 text-center font-medium">${r.match_count || 0}</td></tr>`;
+    }).join('');
+}
+
+// ========== BC PARSING ==========
+let bcProgressInterval = null;
+async function loadBcParsing() {
+    const sel = document.getElementById('bc-parse-season');
+    if (sel.options.length === 0) {
+        for (let i = 30; i >= 1; i--) { const opt = document.createElement('option'); opt.value = i; opt.textContent = `Сезон ${i}`; sel.appendChild(opt); }
+    }
+    try {
+        const stats = await api('/api/bc/stats');
+        document.getElementById('bc-parse-db-stats').innerHTML = [
+            { icon: 'event', label: 'Сезонов', value: stats.seasons, bg: 'bg-primary/10', text: 'text-primary' },
+            { icon: 'sports_volleyball', label: 'Матчей', value: stats.matches, bg: 'bg-cyan-400/10', text: 'text-cyan-400' },
+            { icon: 'groups', label: 'Команд', value: stats.teams, bg: 'bg-purple-500/10', text: 'text-purple-500' },
+            { icon: 'person', label: 'Игроков', value: stats.players, bg: 'bg-amber-400/10', text: 'text-amber-400' },
+            { icon: 'sports', label: 'Судей', value: stats.referees, bg: 'bg-orange-500/10', text: 'text-orange-500' },
+        ].map(s => `<div class="flex items-center gap-3 p-4 bg-bg-dark rounded-xl"><div class="p-2 ${s.bg} rounded-lg ${s.text}"><span class="material-symbols-outlined">${s.icon}</span></div><div><p class="text-xl font-bold text-white">${(s.value || 0).toLocaleString()}</p><p class="text-xs text-slate-500">${s.label}</p></div></div>`).join('');
+    } catch(e) {}
+    updateBcProgress();
+}
+
+const bcStepNames = { schedule: 'Расписание', teams: 'Команды', matches: 'Матчи', players: 'Игроки', referees: 'Судьи' };
+const bcStepIcons = { schedule: 'calendar_month', teams: 'groups', matches: 'scoreboard', players: 'person', referees: 'sports' };
+const bcStepColors = {
+    completed: { bar: 'bg-emerald-500', text: 'text-emerald-400', icon: 'check_circle' },
+    running: { bar: 'bg-primary', text: 'text-primary', icon: 'sync' },
+    pending: { bar: 'bg-slate-700', text: 'text-slate-500', icon: 'hourglass_empty' },
+    failed: { bar: 'bg-red-500', text: 'text-red-400', icon: 'error' },
+};
+
+async function updateBcProgress() {
+    try {
+        const p = await api('/api/bc/progress');
+        const sec = document.getElementById('bc-progress-section');
+        const controls = document.getElementById('bc-parse-controls');
+        if (p.status === 'idle') { sec.style.display = 'none'; controls.style.display = 'none'; return; }
+        sec.style.display = 'block';
+        controls.style.display = 'flex';
+        const badge = document.getElementById('bc-status-badge'), st = document.getElementById('bc-status-text');
+        if (p.status === 'running') { st.textContent = 'Выполняется'; badge.className = 'flex gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20'; st.className = 'text-xs font-bold text-emerald-500 uppercase'; }
+        else if (p.status === 'paused') { st.textContent = 'Пауза'; badge.className = 'flex gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20'; st.className = 'text-xs font-bold text-amber-500 uppercase'; }
+        else if (p.status === 'completed') { st.textContent = 'Завершено'; badge.className = 'flex gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20'; st.className = 'text-xs font-bold text-blue-500 uppercase'; }
+        else { st.textContent = p.status === 'stopped' ? 'Остановлено' : 'Ошибка'; badge.className = 'flex gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20'; st.className = 'text-xs font-bold text-red-500 uppercase'; }
+        document.getElementById('bc-progress-season').textContent = p.season_num || '-';
+        const allInfo = document.getElementById('bc-all-seasons-info');
+        if (p.all_seasons_total > 0) { allInfo.style.display = 'inline'; document.getElementById('bc-all-seasons-current').textContent = p.all_seasons_current || 0; document.getElementById('bc-all-seasons-total').textContent = p.all_seasons_total || 0; }
+        else { allInfo.style.display = 'none'; }
+        document.getElementById('btn-bc-pause').style.display = p.status === 'running' ? 'flex' : 'none';
+        document.getElementById('btn-bc-resume').style.display = p.status === 'paused' ? 'flex' : 'none';
+        const isActive = ['running', 'paused'].includes(p.status);
+        document.getElementById('btn-bc-stop').style.display = isActive ? 'flex' : 'none';
+        if (!isActive) controls.style.display = 'none';
+        const steps = p.steps || {};
+        const stepsOrder = ['schedule', 'teams', 'matches', 'players', 'referees'];
+        document.getElementById('bc-progress-bars').innerHTML = stepsOrder.map(key => {
+            const s = steps[key] || { status: 'pending', total: 0, done: 0, errors: 0 };
+            const colors = bcStepColors[s.status] || bcStepColors.pending;
+            const pct = s.total > 0 ? Math.round(s.done / s.total * 100) : (s.status === 'completed' ? 100 : 0);
+            const statusLabel = s.status === 'completed' ? 'Завершено' : s.status === 'running' ? 'Парсинг...' : s.status === 'pending' ? 'Ожидание' : s.status === 'failed' ? 'Ошибка' : s.status;
+            return `<div class="flex items-center gap-4">
+                <div class="w-28 flex items-center gap-2 shrink-0"><span class="material-symbols-outlined text-sm ${colors.text}">${bcStepIcons[key]}</span><span class="text-sm font-medium ${colors.text}">${bcStepNames[key]}</span></div>
+                <div class="flex-1 h-3 bg-slate-800 rounded-full overflow-hidden"><div class="${colors.bar} h-full rounded-full transition-all duration-500 ${s.status === 'running' ? 'relative' : ''}" style="width:${pct}%">${s.status === 'running' ? '<div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent shimmer"></div>' : ''}</div></div>
+                <div class="w-20 text-right shrink-0"><span class="text-xs font-mono ${colors.text}">${s.done}/${s.total}</span></div>
+                <div class="w-24 shrink-0"><span class="text-xs ${colors.text}"><span class="material-symbols-outlined text-[14px] align-middle" style="font-variation-settings:'FILL' 1">${colors.icon}</span> ${statusLabel}</span></div>
+                ${s.errors > 0 ? `<span class="text-xs text-red-400 shrink-0">(${s.errors} ош.)</span>` : ''}
+            </div>`;
+        }).join('');
+        document.getElementById('bc-last-error').textContent = p.last_error || '';
+        if (isActive && !bcProgressInterval) bcProgressInterval = setInterval(updateBcProgress, 1500);
+        if (['completed', 'stopped', 'failed'].includes(p.status)) { clearInterval(bcProgressInterval); bcProgressInterval = null; loadBcParsing(); }
+    } catch(e) { console.error('BC progress error:', e); }
+}
+
+function startBcProgressPolling() { if (bcProgressInterval) clearInterval(bcProgressInterval); bcProgressInterval = setInterval(updateBcProgress, 1500); updateBcProgress(); }
+
+// BC Parsing buttons
+document.getElementById('btn-bc-full-season').addEventListener('click', async () => {
+    await apiPost('/api/bc/parse/full-season', { season_num: parseInt(document.getElementById('bc-parse-season').value), skip_existing: document.getElementById('bc-parse-skip').checked });
+    startBcProgressPolling();
+});
+document.getElementById('btn-bc-all-seasons').addEventListener('click', async () => {
+    await apiPost('/api/bc/parse/all-seasons', { start: 1, end: 30, skip_existing: document.getElementById('bc-parse-skip').checked });
+    startBcProgressPolling();
+});
+document.getElementById('btn-bc-schedule').addEventListener('click', async () => {
+    await apiPost('/api/bc/parse/schedule', { season_num: parseInt(document.getElementById('bc-parse-season').value) });
+    startBcProgressPolling();
+});
+document.getElementById('btn-bc-parse-matches').addEventListener('click', async () => {
+    await apiPost('/api/bc/parse/matches', { season_num: parseInt(document.getElementById('bc-parse-season').value), skip_existing: document.getElementById('bc-parse-skip').checked });
+    startBcProgressPolling();
+});
+document.getElementById('btn-bc-players').addEventListener('click', async () => {
+    await apiPost('/api/bc/parse/players', { season_num: parseInt(document.getElementById('bc-parse-season').value) });
+    startBcProgressPolling();
+});
+document.getElementById('btn-bc-referees').addEventListener('click', async () => {
+    await apiPost('/api/bc/parse/referees', { season_num: parseInt(document.getElementById('bc-parse-season').value) });
+    startBcProgressPolling();
+});
+document.getElementById('btn-bc-pause').addEventListener('click', () => apiPost('/api/bc/parse/pause'));
+document.getElementById('btn-bc-resume').addEventListener('click', () => apiPost('/api/bc/parse/resume'));
+document.getElementById('btn-bc-stop').addEventListener('click', () => apiPost('/api/bc/parse/stop'));
+
+// ========== BC DETAIL MODALS ==========
+async function showBcMatchDetail(id) {
+    const d = await api(`/api/bc/matches/${id}`);
+    document.getElementById('modal-title').textContent = 'Матч BC';
+    const fd = iso => iso ? new Date(iso).toLocaleString('ru') : '-';
+    const hw = d.home_score > d.away_score;
+    document.getElementById('modal-content').innerHTML = `
+        <p class="text-slate-400 mb-1">${fd(d.date_time)}</p>
+        <p class="text-slate-500 text-sm mb-4">${[d.division_name, d.round_name, d.venue].filter(Boolean).join(' | ')}</p>
+        <div class="flex items-center justify-center gap-8 mb-6">
+            <div class="text-center"><p class="text-lg font-bold text-white">${d.home_team?.name || '-'}</p><p class="text-xs text-slate-500">Хозяева</p></div>
+            <div class="text-center"><p class="text-4xl font-black"><span class="${hw ? 'text-emerald-400' : 'text-red-400'}">${d.home_score ?? '-'}</span><span class="text-slate-600 mx-2">:</span><span class="${!hw ? 'text-emerald-400' : 'text-red-400'}">${d.away_score ?? '-'}</span></p><p class="text-sm text-slate-500 mt-1">${d.set_scores || ''}</p></div>
+            <div class="text-center"><p class="text-lg font-bold text-white">${d.away_team?.name || '-'}</p><p class="text-xs text-slate-500">Гости</p></div>
+        </div>
+        ${d.home_stats?.length ? `<h3 class="font-bold mb-2 mt-4">${d.home_team?.name || 'Хозяева'}</h3><div class="overflow-x-auto mb-4"><table class="w-full text-sm"><thead class="bg-white/5 text-slate-400 text-xs"><tr><th class="px-3 py-2">#</th><th class="px-3 py-2">Игрок</th><th class="px-3 py-2 text-center">Очки</th><th class="px-3 py-2 text-center">Атаки</th><th class="px-3 py-2 text-center">Подачи</th><th class="px-3 py-2 text-center">Блоки</th></tr></thead><tbody class="divide-y divide-white/5">${d.home_stats.map(s => `<tr class="hover:bg-white/5${s.player_id ? ` cursor-pointer" onclick="showBcPlayerDetail(${s.player_id})"` : '"'}><td class="px-3 py-2 text-slate-500">${s.jersey_number || '-'}</td><td class="px-3 py-2 text-white font-medium">${s.player_name || '-'}</td><td class="px-3 py-2 text-center font-bold text-cyan-400">${s.points || 0}</td><td class="px-3 py-2 text-center text-slate-400">${s.attacks || 0}</td><td class="px-3 py-2 text-center text-slate-400">${s.serves || 0}</td><td class="px-3 py-2 text-center text-slate-400">${s.blocks || 0}</td></tr>`).join('')}</tbody></table></div>` : ''}
+        ${d.away_stats?.length ? `<h3 class="font-bold mb-2">${d.away_team?.name || 'Гости'}</h3><div class="overflow-x-auto mb-4"><table class="w-full text-sm"><thead class="bg-white/5 text-slate-400 text-xs"><tr><th class="px-3 py-2">#</th><th class="px-3 py-2">Игрок</th><th class="px-3 py-2 text-center">Очки</th><th class="px-3 py-2 text-center">Атаки</th><th class="px-3 py-2 text-center">Подачи</th><th class="px-3 py-2 text-center">Блоки</th></tr></thead><tbody class="divide-y divide-white/5">${d.away_stats.map(s => `<tr class="hover:bg-white/5${s.player_id ? ` cursor-pointer" onclick="showBcPlayerDetail(${s.player_id})"` : '"'}><td class="px-3 py-2 text-slate-500">${s.jersey_number || '-'}</td><td class="px-3 py-2 text-white font-medium">${s.player_name || '-'}</td><td class="px-3 py-2 text-center font-bold text-cyan-400">${s.points || 0}</td><td class="px-3 py-2 text-center text-slate-400">${s.attacks || 0}</td><td class="px-3 py-2 text-center text-slate-400">${s.serves || 0}</td><td class="px-3 py-2 text-center text-slate-400">${s.blocks || 0}</td></tr>`).join('')}</tbody></table></div>` : ''}
+        ${d.best_players?.length ? `<h3 class="font-bold mb-2 mt-4">Лучшие игроки</h3><div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-white/5 text-slate-400 text-xs"><tr><th class="px-3 py-2">Игрок</th><th class="px-3 py-2 text-center">Очки</th><th class="px-3 py-2 text-center">Атаки</th><th class="px-3 py-2 text-center">Подачи</th><th class="px-3 py-2 text-center">Блоки</th></tr></thead><tbody class="divide-y divide-white/5">${d.best_players.map(bp => `<tr class="bg-amber-500/5"><td class="px-3 py-2 text-amber-400 font-medium"><span class="material-symbols-outlined text-[14px] align-middle" style="font-variation-settings:'FILL' 1">star</span> ${bp.player_name}</td><td class="px-3 py-2 text-center font-bold">${bp.points||0}</td><td class="px-3 py-2 text-center">${bp.attacks||0}</td><td class="px-3 py-2 text-center">${bp.serves||0}</td><td class="px-3 py-2 text-center">${bp.blocks||0}</td></tr>`).join('')}</tbody></table></div>` : ''}
+        ${d.home_total_points != null || d.away_total_points != null ? `<div class="bg-bg-dark rounded-xl p-3 mt-4 text-center"><span class="text-slate-400 text-sm">Общий счёт по очкам: </span><span class="font-bold text-lg ${(d.home_total_points||0) > (d.away_total_points||0) ? 'text-emerald-400' : 'text-red-400'}">${d.home_total_points||0}</span><span class="text-slate-500 mx-2">:</span><span class="font-bold text-lg ${(d.away_total_points||0) > (d.home_total_points||0) ? 'text-emerald-400' : 'text-red-400'}">${d.away_total_points||0}</span></div>` : ''}
+        ${d.referees?.length ? `<p class="text-sm text-slate-400 mt-4">Судьи: ${d.referees.map(r => `<span class="text-cyan-400">${r.full_name}</span>`).join(', ')}</p>` : ''}
+        <div class="mt-6 pt-4 border-t border-white/5 flex justify-end"><a href="https://volleyball.businesschampions.ru/season-${d.season_num || 30}/matches/${d.site_id}" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-primary transition"><span class="material-symbols-outlined text-sm">open_in_new</span>Источник на businesschampions.ru</a></div>`;
+    document.getElementById('detail-modal').style.display = 'flex';
+}
+
+async function showBcTeamDetail(id) {
+    const d = await api(`/api/bc/teams/${id}`);
+    document.getElementById('modal-title').textContent = d.name;
+    document.getElementById('modal-content').innerHTML = `
+        ${d.logo_url ? `<img src="${d.logo_url}" class="w-16 h-16 rounded-lg object-cover border border-white/10 mb-4"/>` : ''}
+        <div class="grid grid-cols-4 gap-4 mb-6">
+            <div class="text-center p-4 bg-bg-dark rounded-xl"><p class="text-2xl font-bold">${d.stats?.total_matches || 0}</p><p class="text-xs text-slate-500 mt-1">Матчей</p></div>
+            <div class="text-center p-4 bg-bg-dark rounded-xl"><p class="text-2xl font-bold text-emerald-400">${d.stats?.wins || 0}</p><p class="text-xs text-slate-500 mt-1">Побед</p></div>
+            <div class="text-center p-4 bg-bg-dark rounded-xl"><p class="text-2xl font-bold text-red-400">${d.stats?.losses || 0}</p><p class="text-xs text-slate-500 mt-1">Поражений</p></div>
+            <div class="text-center p-4 bg-bg-dark rounded-xl"><p class="text-2xl font-bold">${d.stats?.win_rate || 0}%</p><p class="text-xs text-slate-500 mt-1">Винрейт</p></div>
+        </div>
+        ${d.seasons?.length ? `<div class="mb-6"><h3 class="font-bold mb-2">Сезоны (${d.seasons.length})</h3><div class="flex flex-wrap gap-2">${d.seasons.map(s => `<a href="https://volleyball.businesschampions.ru/season-${s.number}/teams/${d.site_id}" target="_blank" rel="noopener" class="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition inline-flex items-center gap-1"><span class="material-symbols-outlined text-[14px]">open_in_new</span>${s.name}</a>`).join('')}</div></div>` : ''}
+        ${d.roster?.length ? `<h3 class="font-bold mb-3">Состав (${d.roster.length})</h3><div class="overflow-x-auto mb-6"><table class="w-full text-sm"><thead class="bg-white/5 text-slate-400 text-xs"><tr><th class="px-3 py-2">Игрок</th><th class="px-3 py-2 text-center">Матчей</th><th class="px-3 py-2 text-center">Очков</th><th class="px-3 py-2 text-center">Атак</th><th class="px-3 py-2 text-center">Подач</th><th class="px-3 py-2 text-center">Блоков</th></tr></thead><tbody class="divide-y divide-white/5">${d.roster.map(p => `<tr class="hover:bg-white/5 cursor-pointer" onclick="showBcPlayerDetail(${p.id})"><td class="px-3 py-2 text-white font-medium">${p.full_name}</td><td class="px-3 py-2 text-center text-slate-400">${p.match_count||0}</td><td class="px-3 py-2 text-center text-cyan-400 font-bold">${p.total_points||0}</td><td class="px-3 py-2 text-center text-slate-400">${p.total_attacks||0}</td><td class="px-3 py-2 text-center text-slate-400">${p.total_serves||0}</td><td class="px-3 py-2 text-center text-slate-400">${p.total_blocks||0}</td></tr>`).join('')}</tbody></table></div>` : ''}
+        ${d.recent_matches?.length ? `<h3 class="font-bold mb-3">Последние матчи</h3><div class="max-h-[300px] overflow-y-auto space-y-1">${d.recent_matches.map(m => `<div class="flex items-center gap-3 px-3 py-2 rounded-lg ${m.is_win ? 'bg-emerald-500/5' : 'bg-red-500/5'} hover:bg-white/5 cursor-pointer text-sm" onclick="showBcMatchDetail(${m.id})"><span class="w-2 h-2 rounded-full ${m.is_win ? 'bg-emerald-500' : 'bg-red-500'}"></span><span class="text-slate-500 w-20">${m.date_time ? new Date(m.date_time).toLocaleDateString('ru') : '-'}</span><span class="text-slate-400">${m.opponent || '-'}</span><span class="ml-auto font-bold ${m.is_win ? 'text-emerald-400' : 'text-red-400'}">${m.score || '-'}</span></div>`).join('')}</div>` : ''}`;
+    document.getElementById('detail-modal').style.display = 'flex';
+}
+
+async function showBcPlayerDetail(id) {
+    const d = await api(`/api/bc/players/${id}`);
+    document.getElementById('modal-title').textContent = d.full_name;
+    document.getElementById('modal-content').innerHTML = `
+        <div class="flex gap-6 mb-6">
+            ${d.photo_url ? `<img src="${d.photo_url}" class="w-24 h-24 rounded-full object-cover border-2 border-white/10 cursor-pointer hover:border-indigo-400/50 transition-colors" onclick="event.stopPropagation();showPhoto('${d.photo_url}')"/>` : `<div class="w-24 h-24 rounded-full bg-slate-700 flex items-center justify-center text-3xl font-bold text-slate-400 border-2 border-white/10">${(d.full_name||'').split(' ').map(n=>n[0]).join('').slice(0,2)}</div>`}
+            <div><p class="text-xl font-bold text-white">${d.full_name}</p><div class="flex gap-4 mt-2 text-sm text-slate-400">${d.birth_date ? `<span>Дата рождения: ${d.birth_date}</span>` : ''}${d.height ? `<span>Рост: ${d.height} см</span>` : ''}${d.weight ? `<span>Вес: ${d.weight} кг</span>` : ''}${d.position ? `<span>${d.position}</span>` : ''}</div></div>
+        </div>
+        <div class="grid grid-cols-5 gap-4 mb-6">
+            <div class="text-center p-3 bg-bg-dark rounded-xl"><p class="text-2xl font-bold text-white">${d.stats?.total_matches || 0}</p><p class="text-xs text-slate-500 mt-1">Матчей</p></div>
+            <div class="text-center p-3 bg-bg-dark rounded-xl"><p class="text-2xl font-bold text-cyan-400">${d.stats?.total_points || 0}</p><p class="text-xs text-slate-500 mt-1">Очков</p></div>
+            <div class="text-center p-3 bg-bg-dark rounded-xl"><p class="text-2xl font-bold text-slate-300">${d.stats?.total_attacks || 0}</p><p class="text-xs text-slate-500 mt-1">Атак</p></div>
+            <div class="text-center p-3 bg-bg-dark rounded-xl"><p class="text-2xl font-bold text-slate-300">${d.stats?.total_serves || 0}</p><p class="text-xs text-slate-500 mt-1">Подач</p></div>
+            <div class="text-center p-3 bg-bg-dark rounded-xl"><p class="text-2xl font-bold text-slate-300">${d.stats?.total_blocks || 0}</p><p class="text-xs text-slate-500 mt-1">Блоков</p></div>
+        </div>
+        ${d.teams?.length ? `<h3 class="font-bold mb-3">Команды (${d.teams.length})</h3><div class="flex flex-wrap gap-2 mb-6">${d.teams.map(t => `<span class="px-3 py-1.5 bg-indigo-500/10 text-indigo-400 rounded-lg text-sm cursor-pointer hover:bg-indigo-500/20 transition-colors" onclick="showBcTeamDetail(${t.id})">${t.name}</span>`).join('')}</div>` : ''}
+        ${d.matches?.length ? `<h3 class="font-bold mb-3">История матчей (${d.matches.length})</h3><div class="max-h-[300px] overflow-y-auto"><table class="w-full text-sm"><thead class="bg-white/5 text-slate-400 text-xs sticky top-0"><tr><th class="px-3 py-2">Дата</th><th class="px-3 py-2">Команда</th><th class="px-3 py-2">Соперник</th><th class="px-3 py-2 text-center">Счёт</th><th class="px-3 py-2 text-center">Очки</th><th class="px-3 py-2 text-center">Атаки</th><th class="px-3 py-2 text-center">Подачи</th><th class="px-3 py-2 text-center">Блоки</th></tr></thead><tbody class="divide-y divide-white/5">${d.matches.map(m => {const sp=m.score?m.score.split(':'):['0','0'];const w=parseInt(sp[0])>parseInt(sp[1]);return `<tr class="hover:bg-white/5 cursor-pointer" onclick="showBcMatchDetail(${m.match_id})"><td class="px-3 py-2 text-slate-500 text-xs">${m.date_time ? new Date(m.date_time).toLocaleDateString('ru') : '-'}</td><td class="px-3 py-2 text-white">${m.team_name || '-'}</td><td class="px-3 py-2 text-slate-400">${m.opponent || '-'}</td><td class="px-3 py-2 text-center font-bold ${w?'text-emerald-400':'text-red-400'}">${m.score||'-'}</td><td class="px-3 py-2 text-center font-bold text-cyan-400">${m.points||0}</td><td class="px-3 py-2 text-center text-slate-400">${m.attacks||0}</td><td class="px-3 py-2 text-center text-slate-400">${m.serves||0}</td><td class="px-3 py-2 text-center text-slate-400">${m.blocks||0}</td></tr>`;}).join('')}</tbody></table></div>` : ''}`;
+    document.getElementById('detail-modal').style.display = 'flex';
+}
+
+async function showBcRefereeDetail(id) {
+    const d = await api(`/api/bc/referees/${id}`);
+    document.getElementById('modal-title').textContent = d.full_name;
+    document.getElementById('modal-content').innerHTML = `
+        <div class="flex items-center gap-4 mb-6">
+            ${d.photo_url ? `<img src="${d.photo_url}" class="w-16 h-16 rounded-full object-cover border-2 border-white/10 cursor-pointer hover:border-indigo-400/50 transition-colors" onclick="event.stopPropagation();showPhoto('${d.photo_url}')"/>` : `<div class="w-16 h-16 rounded-full bg-slate-700 flex items-center justify-center text-2xl font-bold text-slate-300 border-2 border-white/10">${(d.full_name||'').split(' ').map(n=>n[0]).join('').slice(0,2)}</div>`}
+            <div><p class="text-xl font-bold text-white">${d.full_name}</p><p class="text-sm text-slate-400 mt-1">Матчей: <span class="text-white font-bold">${d.match_count || 0}</span></p></div>
+        </div>
+        ${d.matches?.length ? `<h3 class="font-bold mb-3">История матчей (${d.matches.length})</h3><div class="max-h-[400px] overflow-y-auto space-y-1">${d.matches.map(m => `<div class="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/[0.02] hover:bg-white/5 cursor-pointer text-sm" onclick="showBcMatchDetail(${m.id})"><span class="text-slate-500 w-[70px] shrink-0">${m.date_time ? new Date(m.date_time).toLocaleDateString('ru') : '-'}</span><span class="text-white truncate flex-1">${m.home_team} <span class="text-slate-500 mx-1">vs</span> ${m.away_team}</span><span class="font-bold shrink-0 ${m.home_score > m.away_score ? 'text-emerald-400' : 'text-red-400'}">${m.home_score}:${m.away_score}</span></div>`).join('')}</div>` : '<p class="text-sm text-slate-500">Нет матчей</p>'}`;
+    document.getElementById('detail-modal').style.display = 'flex';
+}
+
+function showPhoto(url) { if(!url) return; const o=document.getElementById('photo-overlay'); document.getElementById('photo-overlay-img').src=url; o.classList.add('active'); }
 
 navigateTo('dashboard');
 updateProgress();

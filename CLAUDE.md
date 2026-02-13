@@ -2,55 +2,81 @@
 
 ## Быстрый старт
 
-Это парсер сайта volleymsk.ru для сбора статистики любительского волейбола в Москве.
-Проект развёрнут на сервере и доступен по адресу https://volleymsk.duckdns.org
+Агрегатор статистики любительского волейбола из двух источников:
+1. **VolleyMSK** — volleymsk.ru (любительские турниры Москвы)
+2. **ЛЧБ** — volleyball.businesschampions.ru (Лига Чемпионов Бизнеса, корпоративный волейбол)
 
-### Ключевые файлы:
-1. `src/parser/match_parser.py` - парсинг матчей (составы, счёт, судьи)
-2. `src/parser/roster_parser.py` - парсинг страниц составов (members.php)
-3. `src/parser/base_parser.py` - базовый парсер с RATE_LIMIT (50ms)
-4. `src/database/models.py` - структура БД (SQLAlchemy)
-5. `src/services/data_service.py` - сохранение данных
-6. `src/services/parsing_service.py` - фоновый парсинг с threading
-7. `src/web/app.py` - Flask API + веб-интерфейс
-8. `src/web/templates/index.html` - SPA фронтенд (Tailwind CSS, тёмная тема)
+Проект развёрнут на сервере: https://volleymsk.duckdns.org
+
+### Архитектура проекта:
+```
+src/
+├── database/
+│   ├── db.py              # Database class (SQLite + SQLAlchemy)
+│   └── models.py          # Все модели: VM (Match, Player, Team, Referee, BestPlayer)
+│                          #              BC (BCSeason, BCMatch, BCTeam, BCPlayer,
+│                          #                  BCReferee, BCBestPlayer, BCMatchPlayerStats, ...)
+├── parser/                # Парсеры VolleyMSK (windows-1251, HTML scraping)
+│   ├── base_parser.py     # RATE_LIMIT 50ms
+│   ├── match_parser.py    # match.php → составы, счёт, судьи, лучшие игроки
+│   └── roster_parser.py   # members.php → детали игроков (рост, год, фото)
+├── parser_bc/             # Парсеры ЛЧБ (utf-8, структурированный HTML)
+│   ├── base_parser.py     # BASE_URL = volleyball.businesschampions.ru
+│   ├── season_parser.py   # Имя сезона из навигационного дропдауна (НЕ из <title>!)
+│   ├── schedule_parser.py # Расписание: championship + cup
+│   ├── match_parser.py    # Детали матча + составы + статистика игроков
+│   ├── team_parser.py     # Список команд сезона
+│   ├── player_parser.py   # Детали игрока (фото, рост, вес, позиция)
+│   └── referee_parser.py  # Список судей сезона
+├── services/
+│   ├── data_service.py        # CRUD для VM данных
+│   ├── bc_data_service.py     # CRUD для BC данных (с дедупликацией игроков по ФИО+дата рождения)
+│   ├── parsing_service.py     # Фоновый парсинг VM с threading (pause/resume/stop)
+│   ├── bc_parsing_service.py  # Фоновый парсинг BC (5 шагов: schedule→teams→matches→players→referees)
+│   └── scheduler.py           # AutoUpdater — демон автообновления (раз в час)
+└── web/
+    ├── app.py                 # Flask API (register_routes + register_bc_routes)
+    └── templates/
+        └── index.html         # SPA фронтенд (единый файл, Tailwind CSS)
+```
 
 ### Запуск:
 ```bash
-# Веб-сервер (локально)
-python run.py web
-# http://127.0.0.1:5000
-
-# Тест парсера
-python test_parser.py 42131
+python run.py web              # http://127.0.0.1:5000
+python run.py web --port 8080  # Production
+python test_parser.py 42131    # Тест парсинга одного матча
 ```
 
-## Текущее состояние (10.02.2026)
+## Текущее состояние (13.02.2026)
 
 ### Что работает:
-- Парсинг матчей с составами и фото игроков
-- Полностью переработанный тёмный SPA-интерфейс (Tailwind CSS + Inter + Material Icons)
-- 6 страниц: Dashboard, Матчи, Команды, Игроки, Судьи, Парсинг
-- Детальные модальные окна для матчей/команд/игроков/судей
-- Поиск по командам, игрокам, судьям, матчам (debounce 300ms)
-- Пагинация на матчах и игроках
-- Парсинг из веб-интерфейса с прогрессбаром, паузой и остановкой
-- Деплой на сервере с SSL (Let's Encrypt)
-- Лучшие игроки матча (поиск по имени, fallback на текст)
-- Судьи: кол-во матчей и средний рейтинг в таблице + профиль при клике + тултип при наведении
-- Интерактивный график динамики матчей (фильтр по годам, тултипы)
-- Топ игроков по MVP на дашборде, кол-во матчей и MVP в карточках
-- Поиск по матчам (по названию команды)
-- Ссылка на источник (volleymsk.ru) в деталях матча
+- **Два источника** с переключателем (VolleyMSK / Champions) в сайдбаре
+- SPA на одной HTML-странице (12 страниц: по 6 для каждого источника)
+- Дашборд с графиком динамики, топ-игроками (MVP), топ-судьями, KPI-карточками
+- Детальные модалки для матчей/команд/игроков/судей с кликабельными фото (полноэкранный оверлей)
+- Поиск, сортировка (MVP, очки, атаки, подачи, блоки), пагинация
+- Парсинг из веб-интерфейса с прогрессбарами, паузой, остановкой
+- **Автообновление** — демон проверяет оба источника раз в час
+- Ссылки на источники (volleymsk.ru / businesschampions.ru) в деталях матчей и команд
+- Дедупликация игроков ЛЧБ при парсинге (по ФИО + дата рождения)
 
 ### База данных:
 - SQLite: `data/volleyball.db`
-- ~15000 матчей, ~7000 игроков, ~500 команд, ~1700 судей
-- Задержка парсинга: 50ms (RATE_LIMIT в base_parser.py)
+- **VolleyMSK**: ~36600 матчей (site_id 1..43977), ~7000 игроков, ~500 команд, ~1700 судей
+- **ЛЧБ**: ~7000 матчей (30 сезонов: Весна 2011 — Осень 2025), ~6100 игроков, ~600 команд
 
-### Известные проблемы:
-- Исторические названия команд не отслеживаются (отображается текущее название)
-- Нет страницы сравнения игроков/команд
+### Автообновление (scheduler.py → AutoUpdater):
+- Запускается автоматически при старте Flask-приложения
+- **VolleyMSK**: ищет новые match_id после текущего max, останавливается после 50 пустых
+- **ЛЧБ**: проверяет расписание текущего сезона + детектит новый сезон по имени
+- Статус: `GET /api/autoupdate/status`
+- Интервал: 3600 секунд (константа CHECK_INTERVAL в scheduler.py)
+
+### Известные нюансы:
+- Тег `<title>` на BC сайте содержит "настольный теннис" — это баг сайта, имя сезона берётся из навигационного дропдауна (`season_parser.py`)
+- На BC сайте один игрок может иметь несколько site_id (при смене команды) — дедупликация по ФИО+дата рождения в `bc_data_service.py`, скрипт `merge_bc_duplicates.py` для разовой очистки
+- Для несуществующих сезонов BC сайт отдаёт страницу текущего сезона — проверяем по имени сезона
+- VolleyMSK: 13000+ site_id не имеют матчей (пустые страницы на сайте)
 
 ## Сервер (Production)
 
@@ -71,83 +97,77 @@ ssh -i ~/.ssh/russia_vps_key artemfcsm@176.108.251.49
 
 ### Типичные команды на сервере:
 ```bash
-# Перезапуск сервиса
 sudo systemctl restart volleyball-rating
-
-# Логи
 sudo journalctl -u volleyball-rating -f
+sudo journalctl -u volleyball-rating --since '1 hour ago' | grep 'update:'  # Проверить автообновление
+```
 
-# Обновить код (после scp)
-sudo systemctl restart volleyball-rating
-
-# Деплой с локальной машины (Windows)
-scp -i ~/.ssh/russia_vps_key src/web/templates/index.html artemfcsm@176.108.251.49:/opt/volleyball-rating/src/web/templates/index.html
-scp -i ~/.ssh/russia_vps_key src/web/app.py artemfcsm@176.108.251.49:/opt/volleyball-rating/src/web/app.py
-# и перезапуск:
+### Деплой с локальной машины (Windows):
+```bash
+scp -i ~/.ssh/russia_vps_key <файл> artemfcsm@176.108.251.49:/opt/volleyball-rating/<файл>
 ssh -i ~/.ssh/russia_vps_key artemfcsm@176.108.251.49 "sudo systemctl restart volleyball-rating"
 ```
 
-### Локальная разработка
-- Windows: c:\Dev\volleyball-rating
+### Локальная разработка:
+- Windows: `c:\Dev\volleyball-rating`
 - Веб: http://127.0.0.1:5000
 
 ## API эндпоинты
 
-### Списки (с поиском)
-- `GET /api/matches?page=1&per_page=20&search=` - список матчей (поиск по команде)
-- `GET /api/teams?search=` - команды с поиском
-- `GET /api/players?page=1&per_page=50&search=&sort=mvp` - игроки с поиском (sort: mvp/name)
-- `GET /api/referees?search=` - судьи с поиском (match_count, avg_rating)
+### VolleyMSK
+| Метод | URL | Описание |
+|-------|-----|----------|
+| GET | `/api/matches?page=1&per_page=20&search=` | Матчи (поиск по команде) |
+| GET | `/api/teams?search=` | Команды |
+| GET | `/api/players?page=1&per_page=50&search=&sort=mvp` | Игроки (sort: mvp/name) |
+| GET | `/api/referees?search=` | Судьи (match_count, avg_rating) |
+| GET | `/api/matches/<id>` | Детали матча |
+| GET | `/api/teams/<id>` | Детали команды |
+| GET | `/api/players/<id>` | Детали игрока |
+| GET | `/api/referees/<id>` | Детали судьи |
+| GET | `/api/stats/monthly` | Данные для графика |
+| POST | `/api/parse/matches` | Запуск парсинга |
+| POST | `/api/parse/rosters` | Парсинг составов |
+| POST | `/api/parse/pause\|resume\|stop` | Управление |
 
-### Детальная информация
-- `GET /api/matches/<id>` - матч с составами и лучшими игроками
-- `GET /api/teams/<id>` - команда со статистикой, игроками, матчами
-- `GET /api/players/<id>` - игрок с полной статистикой, историей матчей, судейством
-- `GET /api/referees/<id>` - судья с историей матчей и распределением рейтингов
+### ЛЧБ (Business Champions)
+| Метод | URL | Описание |
+|-------|-----|----------|
+| GET | `/api/bc/matches?page=1&per_page=20&search=` | Матчи |
+| GET | `/api/bc/teams?search=` | Команды |
+| GET | `/api/bc/players?page=1&per_page=50&search=&sort=mvp` | Игроки (sort: mvp/matches/points/attacks/serves/blocks/name) |
+| GET | `/api/bc/referees?search=` | Судьи |
+| GET | `/api/bc/matches/<id>` | Детали матча (с season_num для ссылки на источник) |
+| GET | `/api/bc/teams/<id>` | Детали команды (seasons[], roster[]) |
+| GET | `/api/bc/players/<id>` | Детали игрока (teams[], matches[] со score) |
+| GET | `/api/bc/referees/<id>` | Детали судьи |
+| GET | `/api/bc/stats` | Общая статистика |
+| GET | `/api/bc/stats/monthly` | Данные для графика |
+| POST | `/api/bc/parse/season` | Парсинг сезона (body: season_num, mode, skip_existing) |
+| POST | `/api/bc/parse/pause\|resume\|stop` | Управление |
 
-### Статистика
-- `GET /api/stats/monthly` - количество матчей по месяцам (для графика)
+### Общие
+| Метод | URL | Описание |
+|-------|-----|----------|
+| GET | `/api/autoupdate/status` | Статус автообновления (last_run, last_vm_result, last_bc_result) |
 
-### Парсинг
-- `POST /api/parse/matches` - запустить парсинг матчей
-- `POST /api/parse/rosters` - запустить парсинг составов
-- `POST /api/parse/pause` - пауза
-- `POST /api/parse/resume` - продолжить
-- `POST /api/parse/stop` - остановить
+## Модели данных (models.py)
 
-## Особенности HTML volleymsk.ru
+### VolleyMSK модели:
+- **Player**: site_id, first_name, last_name, patronymic, height, position, birth_year, photo_url
+- **Team**: site_id, name
+- **Match**: site_id, date_time, home/away_team_id, home/away_score, set_scores, referee_id, referee_rating_*, tournament_path, status
+- **BestPlayer**: match_id, player_id (nullable!), team_id, player_name (fallback)
+- **Referee**: site_id, full_name
 
-### Важно
-- Кодировка сайта: **windows-1251**
-- Ссылок player.php на страницах матча и состава НЕТ
-- ID игроков извлекаются из URL картинок: `/uploads/player/t/{ID}.PNG`
-- Фото URL: `https://volleymsk.ru/uploads/player/t/{ID}.{ext}`
-
-### Страница матча (match.php)
-- Таблица с bgcolor="#CCCCCC" содержит основную информацию
-- Турнирный путь, дата, результат, судья, оценки, лучшие игроки
-- Вторая таблица - составы команд с фото игроков
-
-### Страница состава (members.php)
-- ID игрока в URL фото
-- Имя в `<strong>` тегах (Фамилия<br>Имя<br>Отчество)
-- Рост: "Рост: 185", Год: "Год рожд: 1986"
-
-## Модели данных
-
-### Player
-- site_id, first_name, last_name, patronymic
-- height, position, birth_year, photo_url
-
-### Match
-- site_id, date_time, home_team_id, away_team_id
-- home_score, away_score, set_scores
-- referee_id, referee_rating_home/away, referee_rating_home/away_text
-- tournament_path, status
-
-### BestPlayer
-- match_id, player_id (nullable!), team_id
-- player_name (fallback если игрок не найден)
+### ЛЧБ модели (префикс BC):
+- **BCSeason**: number, name (e.g. "Осень 2025")
+- **BCTeam**: site_id, name, logo_url, is_women
+- **BCPlayer**: site_id, first_name, last_name, birth_date, height, weight, position, photo_url
+- **BCReferee**: site_id, first_name, last_name, photo_url
+- **BCMatch**: site_id, season_id, date_time, home/away_team_id, home/away_score, set_scores, referee_id, division_name, round_name, venue, tournament_type
+- **BCBestPlayer**: match_id, player_id (nullable), team_id, player_name
+- **BCMatchPlayerStats**: match_id, player_id, team_id, points, attacks, serves, blocks
 
 ## Фронтенд (SPA)
 
@@ -156,25 +176,40 @@ ssh -i ~/.ssh/russia_vps_key artemfcsm@176.108.251.49 "sudo systemctl restart vo
   - primary: #6366f1 (indigo), bg-dark: #0f1117, surface: #1a1d28, input-bg: #252836
 - **Material Symbols Outlined** — иконки
 - **Inter** — шрифт
-- Hash-based navigation (`#dashboard`, `#matches`, `#teams`, `#players`, `#referees`, `#parsing`)
-- `pageLoaders` — маппинг страниц на функции загрузки данных
+- Переключатель источника: `switchSource('volleymsk'|'bc')` — показывает/скрывает соответствующие пункты меню
+- Hash-based navigation: `#dashboard`, `#matches`, `#teams`, `#players`, `#referees`, `#parsing`, `#bc-dashboard`, `#bc-matches`, `#bc-teams`, `#bc-players`, `#bc-referees`, `#bc-parsing`
+- `pageLoaders` — маппинг всех 12 страниц на функции загрузки данных
 - `api(url)` — обёртка fetch для API вызовов
 - `setupSearch(inputId, loaderFn)` — debounce поиск 300ms
-- Модальные окна для детальной информации (матчи, игроки, команды, судьи)
-- Интерактивный SVG график динамики матчей с фильтром по годам
-- Тултипы при наведении на судей (последние 5 матчей) с кешированием
+- Модальные окна: `showMatchDetail`, `showPlayerDetail`, `showTeamDetail`, `showRefereeDetail` + BC-версии (`showBcMatchDetail`, ...)
+- `showPhoto(url)` — полноэкранный оверлей фото (`#photo-overlay`)
+- SVG-графики: `renderChart()` / `renderBcChart()` — интерактивные с тултипами и фильтром по годам
+- Тултипы судей (VM): кеширование через `refTooltipCache`
+- BC-сортировка игроков: `setBcPlayersSort(field)` — mvp/matches/points/attacks/serves/blocks
 
-## Дизайн-макеты (Stitch)
+## Утилитарные скрипты:
+- `backfill_volleymsk.py` — разовое заполнение пробелов VM (пропущенные site_id)
+- `merge_bc_duplicates.py` — объединение дублей BC игроков (по ФИО + дата рождения)
+- `migrate_team_gender.py` — миграция поля is_women для BC команд
+- `debug_html.py` — сохранение HTML страницы матча для отладки
 
-Макеты сгенерированы через Google Stitch MCP и лежат в `stitch_designs/`:
-- `stitch_dashboard.html` — Dashboard
-- `matches.html` — Список матчей
-- `players.html` — Каталог игроков
-- `teams.html` — Каталог команд
-- `referees.html` — Рейтинг судей
-- `parsing.html` — Управление парсингом
+## Особенности HTML источников
 
-Stitch проект ID: `7337845422571308408`
+### volleymsk.ru:
+- Кодировка: **windows-1251**
+- Ссылок player.php на страницах НЕТ
+- ID игроков из URL картинок: `/uploads/player/t/{ID}.PNG`
+- Фото URL: `https://volleymsk.ru/uploads/player/t/{ID}.{ext}`
+- Максимальный match_id: ~43977 (февраль 2026)
+
+### volleyball.businesschampions.ru:
+- Мультиспортивный сайт (волейбол, футбол, теннис и т.д.)
+- **ВАЖНО**: `<title>` страницы содержит "настольный теннис" — это баг сайта, НЕ использовать
+- Имена сезонов — из навигационного дропдауна: `<a href="/season-N">Осень 2025</a>`
+- Для несуществующих сезонов отдаёт страницу текущего → проверяем по имени
+- Один игрок может иметь несколько профилей (site_id) при смене команды
+- Ссылка на матч: `https://volleyball.businesschampions.ru/season-{N}/matches/{ID}`
+- Ссылка на команду: `https://volleyball.businesschampions.ru/season-{N}/teams/{ID}`
 
 ## Зависимости
 ```
@@ -184,21 +219,4 @@ SQLAlchemy
 BeautifulSoup4
 lxml
 requests
-```
-
-## Типичные задачи
-
-### Отладка парсинга:
-```bash
-python debug_html.py 42131  # Сохранит HTML
-```
-
-### Перепарсить матчи:
-В веб-интерфейсе снять галочку "Пропускать существующие" и запустить.
-
-### Деплой изменений на сервер:
-```bash
-# С Windows на сервер
-scp -i ~/.ssh/russia_vps_key <файл> artemfcsm@176.108.251.49:/opt/volleyball-rating/<файл>
-ssh -i ~/.ssh/russia_vps_key artemfcsm@176.108.251.49 "sudo systemctl restart volleyball-rating"
 ```
